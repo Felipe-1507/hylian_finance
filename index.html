@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -14,13 +15,13 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDrAyIa8Ibc-YCCnCdsmRvLdv4QiJjOa4o",
-  authDomain: "hylianfinance.firebaseapp.com",
-  projectId: "hylianfinance",
-  storageBucket: "hylianfinance.firebasestorage.app",
-  messagingSenderId: "327768932521",
-  appId: "1:327768932521:web:7200e81cd0a8d0222ca9b8",
-  measurementId: "G-GETJF6YC46"
+apiKey: “AIzaSyDrAyIa8Ibc-YCCnCdsmRvLdv4QiJjOa4o”,
+authDomain: “hylianfinance.firebaseapp.com”,
+projectId: “hylianfinance”,
+storageBucket: “hylianfinance.firebasestorage.app”,
+messagingSenderId: “327768932521”,
+appId: “1:327768932521:web:7200e81cd0a8d0222ca9b8”,
+measurementId: “G-GETJF6YC46”
 };
 
 const app = initializeApp(firebaseConfig);
@@ -33,141 +34,145 @@ window._fb = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged,
 
 // ===== AUTH STATE =====
 onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    window._currentUser = user;
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app-shell').style.display = 'block';
-    atualizarUIUsuario(user);
-    await carregarTudoFirebase();
-    renderAll();
-    renderizarCartoes();
-    renderizarCompras();
-    renderMetas();
-  } else {
-    window._currentUser = null;
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('app-shell').style.display = 'none';
-  }
+if (user) {
+window._currentUser = user;
+document.getElementById(‘login-screen’).style.display = ‘none’;
+document.getElementById(‘app-shell’).style.display = ‘block’;
+atualizarUIUsuario(user);
+await carregarTudoFirebase();
+renderAll();
+renderizarCartoes();
+renderizarCompras();
+renderMetas();
+} else {
+window._currentUser = null;
+document.getElementById(‘login-screen’).style.display = ‘flex’;
+document.getElementById(‘app-shell’).style.display = ‘none’;
+}
 });
 
 window.loginGoogle = async function() {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch(e) {
-    console.error(e);
-    toastMsg('Erro ao fazer login. Tente novamente.', 'erro');
-  }
+try {
+await signInWithPopup(auth, provider);
+} catch(e) {
+console.error(e);
+toastMsg(‘Erro ao fazer login. Tente novamente.’, ‘erro’);
+}
 };
 
 window.logoutApp = async function() {
-  showModal('Sair da conta?', 'Você precisará fazer login novamente para acessar seus dados.', async () => {
-    await signOut(auth);
-    toastMsg('Até logo!');
-  });
+showModal(‘Sair da conta?’, ‘Você precisará fazer login novamente para acessar seus dados.’, async () => {
+await signOut(auth);
+toastMsg(‘Até logo!’);
+});
 };
 
 // ===== FIRESTORE: carregar tudo =====
 window.carregarTudoFirebase = async function() {
-  if (!window._currentUser) return;
-  const uid = window._currentUser.uid;
-  // Transações: colecao fin_{uid}
-  // Mensalidades: doc users/{uid}/data/mensalidades
-  // Cartões: doc users/{uid}/data/cartoes
-  // Compras: doc users/{uid}/data/compras
-  // Metas: doc users/{uid}/data/metas
-  try {
-    // Mensalidades
-    const mensSnap = await getDoc(doc(db, `users/${uid}/data/mensalidades`));
-    window._mensalidades = mensSnap.exists() ? (mensSnap.data().lista || []) : [];
+if (!window._currentUser) return;
+const uid = window.*currentUser.uid;
+// Transações: colecao fin*{uid}
+// Mensalidades: doc users/{uid}/data/mensalidades
+// Cartões: doc users/{uid}/data/cartoes
+// Compras: doc users/{uid}/data/compras
+// Metas: doc users/{uid}/data/metas
+try {
+// Mensalidades
+const mensSnap = await getDoc(doc(db, `users/${uid}/data/mensalidades`));
+window._mensalidades = mensSnap.exists() ? (mensSnap.data().lista || []) : [];
 
-    // Cartões
-    const cartSnap = await getDoc(doc(db, `users/${uid}/data/cartoes`));
-    window._cartoes = cartSnap.exists() ? (cartSnap.data().lista || []) : [];
+```
+// Cartões
+const cartSnap = await getDoc(doc(db, `users/${uid}/data/cartoes`));
+window._cartoes = cartSnap.exists() ? (cartSnap.data().lista || []) : [];
 
-    // Compras
-    const compSnap = await getDoc(doc(db, `users/${uid}/data/compras`));
-    window._compras = compSnap.exists() ? (compSnap.data().lista || []) : [];
+// Compras
+const compSnap = await getDoc(doc(db, `users/${uid}/data/compras`));
+window._compras = compSnap.exists() ? (compSnap.data().lista || []) : [];
 
-    // Metas
-    const metasSnap = await getDoc(doc(db, `users/${uid}/data/metas`));
-    window._metas = metasSnap.exists() ? (metasSnap.data() || {}) : { orcamentos: {}, metaEconomia: 0 };
-    if (!window._metas.orcamentos) window._metas.orcamentos = {};
+// Metas
+const metasSnap = await getDoc(doc(db, `users/${uid}/data/metas`));
+window._metas = metasSnap.exists() ? (metasSnap.data() || {}) : { orcamentos: {}, metaEconomia: 0 };
+if (!window._metas.orcamentos) window._metas.orcamentos = {};
 
-    // Transações do mês atual e vizinhos (-6 meses)
-    for (let i = 0; i <= 6; i++) {
-      let m = new Date().getMonth() - i;
-      let y = new Date().getFullYear();
-      while (m < 0) { m += 12; y--; }
-      await _carregarTransacoesMes(uid, y, m);
-    }
-  } catch(e) {
-    console.error('Erro ao carregar Firebase:', e);
-  }
+// Transações do mês atual e vizinhos (-6 meses)
+for (let i = 0; i <= 6; i++) {
+  let m = new Date().getMonth() - i;
+  let y = new Date().getFullYear();
+  while (m < 0) { m += 12; y--; }
+  await _carregarTransacoesMes(uid, y, m);
+}
+```
+
+} catch(e) {
+console.error(‘Erro ao carregar Firebase:’, e);
+}
 };
 
 window._carregarTransacoesMes = async function(uid, year, month) {
-  const key = `fin_${year}_${month}`;
-  if (window._txCache && window._txCache[key] !== undefined) return;
-  if (!window._txCache) window._txCache = {};
-  try {
-    const snap = await getDoc(doc(db, `users/${uid}/transacoes/${key}`));
-    window._txCache[key] = snap.exists() ? (snap.data().lista || []) : [];
-  } catch(e) {
-    window._txCache[key] = [];
-  }
+const key = `fin_${year}_${month}`;
+if (window._txCache && window._txCache[key] !== undefined) return;
+if (!window._txCache) window._txCache = {};
+try {
+const snap = await getDoc(doc(db, `users/${uid}/transacoes/${key}`));
+window._txCache[key] = snap.exists() ? (snap.data().lista || []) : [];
+} catch(e) {
+window._txCache[key] = [];
+}
 };
 
 // ===== FIRESTORE: salvar helpers =====
 window._salvarTransacoesFirebase = async function(year, month, lista) {
-  if (!window._currentUser) return;
-  const uid = window._currentUser.uid;
-  const key = `fin_${year}_${month}`;
-  if (!window._txCache) window._txCache = {};
-  window._txCache[key] = lista;
-  await setDoc(doc(db, `users/${uid}/transacoes/${key}`), { lista });
+if (!window._currentUser) return;
+const uid = window._currentUser.uid;
+const key = `fin_${year}_${month}`;
+if (!window._txCache) window._txCache = {};
+window._txCache[key] = lista;
+await setDoc(doc(db, `users/${uid}/transacoes/${key}`), { lista });
 };
 
 window._salvarMensalidadesFirebase = async function(lista) {
-  if (!window._currentUser) return;
-  const uid = window._currentUser.uid;
-  window._mensalidades = lista;
-  await setDoc(doc(db, `users/${uid}/data/mensalidades`), { lista });
+if (!window._currentUser) return;
+const uid = window._currentUser.uid;
+window._mensalidades = lista;
+await setDoc(doc(db, `users/${uid}/data/mensalidades`), { lista });
 };
 
 window._salvarCartoesFirebase = async function(lista) {
-  if (!window._currentUser) return;
-  const uid = window._currentUser.uid;
-  window._cartoes = lista;
-  await setDoc(doc(db, `users/${uid}/data/cartoes`), { lista });
+if (!window._currentUser) return;
+const uid = window._currentUser.uid;
+window._cartoes = lista;
+await setDoc(doc(db, `users/${uid}/data/cartoes`), { lista });
 };
 
 window._salvarComprasFirebase = async function(lista) {
-  if (!window._currentUser) return;
-  const uid = window._currentUser.uid;
-  window._compras = lista;
-  await setDoc(doc(db, `users/${uid}/data/compras`), { lista });
+if (!window._currentUser) return;
+const uid = window._currentUser.uid;
+window._compras = lista;
+await setDoc(doc(db, `users/${uid}/data/compras`), { lista });
 };
 
 window._salvarMetasFirebase = async function(metas) {
-  if (!window._currentUser) return;
-  const uid = window._currentUser.uid;
-  window._metas = metas;
-  await setDoc(doc(db, `users/${uid}/data/metas`), metas);
+if (!window._currentUser) return;
+const uid = window._currentUser.uid;
+window._metas = metas;
+await setDoc(doc(db, `users/${uid}/data/metas`), metas);
 };
 
 // ===== PERFIL: atualizar nome/foto =====
 window.salvarPerfil = async function() {
-  const nome = document.getElementById('perfil-nome-input').value.trim();
-  if (!nome) { toastMsg('Informe um nome', 'erro'); return; }
-  try {
-    await updateProfile(auth.currentUser, { displayName: nome });
-    atualizarUIUsuario(auth.currentUser);
-    toastMsg('✓ Perfil atualizado!');
-  } catch(e) {
-    toastMsg('Erro ao salvar perfil', 'erro');
-  }
+const nome = document.getElementById(‘perfil-nome-input’).value.trim();
+if (!nome) { toastMsg(‘Informe um nome’, ‘erro’); return; }
+try {
+await updateProfile(auth.currentUser, { displayName: nome });
+atualizarUIUsuario(auth.currentUser);
+toastMsg(‘✓ Perfil atualizado!’);
+} catch(e) {
+toastMsg(‘Erro ao salvar perfil’, ‘erro’);
+}
 };
 </script>
+
 <style>
   :root {
     --bg-light: #f8fafc;
@@ -884,27 +889,30 @@ window.salvarPerfil = async function() {
 
     /* Header simplificado */
     header {
-      padding: 10px 14px;
+      padding: 10px 12px;
       flex-wrap: nowrap;
-      gap: 8px;
+      gap: 6px;
       position: sticky;
       top: 0;
       z-index: 200;
+      overflow: hidden;
     }
-    .logo { font-size: 1rem; }
-    .logo span.logo-text { display: none; }
+    .logo { font-size: 1rem; flex-shrink: 0; gap: 6px; }
+    .logo .logo-text { display: none; }
 
     /* Esconde nav-tabs do header (vira bottom nav) */
     .nav-tabs { display: none; }
 
     /* Botões do header viram ícones compactos */
     .btn-export, .btn-import { display: none; }
+    #theme-toggle-btn { display: none; }
     .month-nav { gap: 4px; }
     .month-nav button { width: 28px; height: 28px; font-size: 1rem; }
-    #month-label { font-size: 0.78rem; min-width: 100px; }
+    #month-label { font-size: 0.78rem; min-width: 90px; }
 
     /* Header right compacto */
-    .header-right { gap: 6px; }
+    .header-right { gap: 4px; flex-shrink: 0; }
+    #user-avatar-wrap { flex-shrink: 0; }
 
     /* Menu hamburguer */
     #hamburger-btn { display: flex; }
@@ -1352,6 +1360,7 @@ window.salvarPerfil = async function() {
     background: var(--surface2-light);
   }
 </style>
+
 </head>
 <body>
 <!-- TELA DE LOGIN -->
@@ -1369,11 +1378,12 @@ window.salvarPerfil = async function() {
 </div>
 
 <!-- APP PRINCIPAL -->
+
 <div id="app-shell" style="display:none;">
 <header>
   <div class="logo">
     <i data-lucide="triangle" class="w-5 h-5 fill-current"></i>
-    HYLIAN FINANCE
+    <span class="logo-text">HYLIAN FINANCE</span>
   </div>
   <div class="header-right">
     <div class="nav-tabs">
@@ -1409,14 +1419,19 @@ window.salvarPerfil = async function() {
 </header>
 
 <!-- Drawer overlay -->
+
 <div id="drawer-overlay"></div>
 
 <!-- Drawer lateral mobile -->
+
 <div id="mobile-drawer">
   <div class="drawer-header">
     <span class="drawer-title">⟁ HYLIAN FINANCE</span>
     <button class="drawer-close" id="drawer-close-btn">✕</button>
   </div>
+  <button class="drawer-item" id="drawer-theme-btn" onclick="toggleTheme(); closeDrawer()">
+    <span class="drawer-icon" id="drawer-theme-icon">🌙</span> <span id="drawer-theme-label">Modo escuro</span>
+  </button>
   <button class="drawer-item" onclick="exportarJSON(); closeDrawer()">
     <span class="drawer-icon">⬇</span> Exportar dados
   </button>
@@ -1427,6 +1442,7 @@ window.salvarPerfil = async function() {
 </div>
 
 <!-- Bottom nav mobile -->
+
 <nav class="bottom-nav">
   <button class="bottom-nav-item active" id="bnav-resumo" onclick="switchTab('resumo')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -1447,6 +1463,7 @@ window.salvarPerfil = async function() {
 </nav>
 
 <!-- Modal de confirmação -->
+
 <div class="modal-overlay" id="modal-confirm">
   <div class="modal-box">
     <span class="modal-icon">🗑️</span>
@@ -1485,113 +1502,117 @@ window.salvarPerfil = async function() {
       </div>
     </div>
 
-    <div class="grid2">
-      <div class="panel">
-        <div class="panel-title"><i data-lucide="bar-chart-3" class="w-4 h-4"></i> Receitas vs Despesas — Últimos 6 meses</div>
-        <div class="chart-wrap"><canvas id="chart-evolucao"></canvas></div>
+```
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title"><i data-lucide="bar-chart-3" class="w-4 h-4"></i> Receitas vs Despesas — Últimos 6 meses</div>
+    <div class="chart-wrap"><canvas id="chart-evolucao"></canvas></div>
+  </div>
+  <div class="panel">
+    <div class="panel-title"><i data-lucide="pie-chart" class="w-4 h-4"></i> Gastos por Categoria</div>
+    <div class="chart-wrap"><canvas id="chart-pizza"></canvas></div>
+  </div>
+</div>
+
+<div class="grid3">
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="plus-circle" class="w-4 h-4"></i> Nova Transação</div>
+      <div class="tipo-toggle">
+        <button class="tipo-btn active despesa" id="btn-despesa" onclick="setTipo('despesa')">− Despesa</button>
+        <button class="tipo-btn receita" id="btn-receita" onclick="setTipo('receita')">+ Receita</button>
       </div>
-      <div class="panel">
-        <div class="panel-title"><i data-lucide="pie-chart" class="w-4 h-4"></i> Gastos por Categoria</div>
-        <div class="chart-wrap"><canvas id="chart-pizza"></canvas></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Descrição</label>
+          <input id="tx-desc" type="text" placeholder="Ex: Supermercado">
+        </div>
+        <div class="form-group">
+          <label>Valor (R$)</label>
+          <input id="tx-valor" type="number" placeholder="0,00" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="tx-cat">
+            <option value="Moradia">🏠 Moradia</option>
+            <option value="Água">💧 Água</option>
+            <option value="Luz/Energia">⚡ Luz/Energia</option>
+            <option value="Internet">🌐 Internet</option>
+            <option value="Lazer/Entretenimento">🎮 Lazer/Entretenimento</option>
+            <option value="Assinaturas/Mensalidades">📱 Assinaturas/Mensalidades</option>
+            <option value="Alimentação">🛒 Alimentação</option>
+            <option value="Transporte">🚗 Transporte</option>
+            <option value="Saúde">💊 Saúde</option>
+            <option value="Educação">📚 Educação</option>
+            <option value="Investimentos">📈 Investimentos</option>
+            <option value="Salário">💼 Salário</option>
+            <option value="Outros">💡 Outros</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Data</label>
+          <input id="tx-data" type="date">
+        </div>
       </div>
+      <button class="btn-add" id="add-transaction-btn" onclick="adicionarTransacao()">Adicionar Transação</button>
     </div>
 
-    <div class="grid3">
-      <div style="display:flex;flex-direction:column;gap:20px;">
-        <div class="panel">
-          <div class="panel-title"><i data-lucide="plus-circle" class="w-4 h-4"></i> Nova Transação</div>
-          <div class="tipo-toggle">
-            <button class="tipo-btn active despesa" id="btn-despesa" onclick="setTipo('despesa')">− Despesa</button>
-            <button class="tipo-btn receita" id="btn-receita" onclick="setTipo('receita')">+ Receita</button>
-          </div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label>Descrição</label>
-              <input id="tx-desc" type="text" placeholder="Ex: Supermercado">
-            </div>
-            <div class="form-group">
-              <label>Valor (R$)</label>
-              <input id="tx-valor" type="number" placeholder="0,00" step="0.01">
-            </div>
-            <div class="form-group">
-              <label>Categoria</label>
-              <select id="tx-cat">
-                <option value="Moradia">🏠 Moradia</option>
-                <option value="Água">💧 Água</option>
-                <option value="Luz/Energia">⚡ Luz/Energia</option>
-                <option value="Internet">🌐 Internet</option>
-                <option value="Lazer/Entretenimento">🎮 Lazer/Entretenimento</option>
-                <option value="Assinaturas/Mensalidades">📱 Assinaturas/Mensalidades</option>
-                <option value="Alimentação">🛒 Alimentação</option>
-                <option value="Transporte">🚗 Transporte</option>
-                <option value="Saúde">💊 Saúde</option>
-                <option value="Educação">📚 Educação</option>
-                <option value="Investimentos">📈 Investimentos</option>
-                <option value="Salário">💼 Salário</option>
-                <option value="Outros">💡 Outros</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Data</label>
-              <input id="tx-data" type="date">
-            </div>
-          </div>
-          <button class="btn-add" id="add-transaction-btn" onclick="adicionarTransacao()">Adicionar Transação</button>
-        </div>
-
-        <div class="panel">
-          <div class="panel-title"><i data-lucide="list" class="w-4 h-4"></i> Transações do Mês</div>
-          <div class="filter-bar">
-            <input type="text" id="search-desc" placeholder="Buscar por descrição" style="flex: 2;">
-            <select id="filter-categoria" style="flex: 1;">
-              <option value="">Todas categorias</option>
-            </select>
-            <select id="sort-order" style="flex: 1;">
-              <option value="date-desc">Data (mais recente)</option>
-              <option value="date-asc">Data (mais antiga)</option>
-              <option value="valor-desc">Valor (maior)</option>
-              <option value="valor-asc">Valor (menor)</option>
-              <option value="desc-asc">Descrição (A-Z)</option>
-            </select>
-            <button class="btn-add" id="apply-filters" style="width: auto; margin: 0;">Filtrar</button>
-            <button class="btn-add" id="clear-filters" style="width: auto; margin: 0; background: var(--surface2-light);">Limpar</button>
-          </div>
-          <div class="tx-list" id="tx-list">
-            <div class="empty-state"><span class="emoji">💸</span>Nenhuma transação ainda.<br>Adicione sua primeira entrada!</div>
-          </div>
-        </div>
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="list" class="w-4 h-4"></i> Transações do Mês</div>
+      <div class="filter-bar">
+        <input type="text" id="search-desc" placeholder="Buscar por descrição" style="flex: 2;">
+        <select id="filter-categoria" style="flex: 1;">
+          <option value="">Todas categorias</option>
+        </select>
+        <select id="sort-order" style="flex: 1;">
+          <option value="date-desc">Data (mais recente)</option>
+          <option value="date-asc">Data (mais antiga)</option>
+          <option value="valor-desc">Valor (maior)</option>
+          <option value="valor-asc">Valor (menor)</option>
+          <option value="desc-asc">Descrição (A-Z)</option>
+        </select>
+        <button class="btn-add" id="apply-filters" style="width: auto; margin: 0;">Filtrar</button>
+        <button class="btn-add" id="clear-filters" style="width: auto; margin: 0; background: var(--surface2-light);">Limpar</button>
       </div>
-
-      <div style="display:flex;flex-direction:column;gap:20px;">
-        <div class="panel">
-          <div class="panel-title"><i data-lucide="trending-up" class="w-4 h-4"></i> Top Categorias</div>
-          <div class="cat-bars" id="cat-bars">
-            <div style="color:var(--muted-light); text-align:center; padding:20px 0;">Sem dados ainda</div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-title"><i data-lucide="repeat" class="w-4 h-4"></i> Mensalidades Fixas</div>
-          <div class="add-mens-row">
-            <input id="mens-nome" type="text" placeholder="Nome (ex: Netflix)">
-            <input id="mens-val" type="number" placeholder="R$" step="0.01" style="max-width:90px;">
-            <input id="mens-dia" type="number" placeholder="Dia venc." style="max-width:70px;">
-            <button class="btn-add-mens" onclick="adicionarMensalidade()">+ Add</button>
-          </div>
-          <div class="mens-list" id="mens-list">
-            <div class="empty-state"><span class="emoji">📋</span>Nenhuma mensalidade.</div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-title"><i data-lucide="bell" class="w-4 h-4"></i> Lembretes (Próximos vencimentos)</div>
-          <ul id="reminders-list" class="reminder-list"></ul>
-        </div>
+      <div class="tx-list" id="tx-list">
+        <div class="empty-state"><span class="emoji">💸</span>Nenhuma transação ainda.<br>Adicione sua primeira entrada!</div>
       </div>
     </div>
   </div>
 
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="trending-up" class="w-4 h-4"></i> Top Categorias</div>
+      <div class="cat-bars" id="cat-bars">
+        <div style="color:var(--muted-light); text-align:center; padding:20px 0;">Sem dados ainda</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="repeat" class="w-4 h-4"></i> Mensalidades Fixas</div>
+      <div class="add-mens-row">
+        <input id="mens-nome" type="text" placeholder="Nome (ex: Netflix)">
+        <input id="mens-val" type="number" placeholder="R$" step="0.01" style="max-width:90px;">
+        <input id="mens-dia" type="number" placeholder="Dia venc." style="max-width:70px;">
+        <button class="btn-add-mens" onclick="adicionarMensalidade()">+ Add</button>
+      </div>
+      <div class="mens-list" id="mens-list">
+        <div class="empty-state"><span class="emoji">📋</span>Nenhuma mensalidade.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="bell" class="w-4 h-4"></i> Lembretes (Próximos vencimentos)</div>
+      <ul id="reminders-list" class="reminder-list"></ul>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+
   <!-- ABA CARTÕES -->
+
   <div id="view-cartoes" class="view-section">
     <div class="panel">
       <div class="panel-title"><i data-lucide="credit-card" class="w-4 h-4"></i> Meus Cartões</div>
@@ -1630,6 +1651,7 @@ window.salvarPerfil = async function() {
   </div>
 
   <!-- ABA METAS -->
+
   <div id="view-metas" class="view-section">
     <div class="metas-grid">
       <!-- Meta de economia -->
@@ -1649,60 +1671,64 @@ window.salvarPerfil = async function() {
         <div id="meta-economia-resultado" style="margin-top:18px;"></div>
       </div>
 
-      <!-- Adicionar orçamento -->
-      <div class="panel">
-        <div class="panel-title"><i data-lucide="sliders" class="w-4 h-4"></i> Orçamento por Categoria</div>
-        <div class="add-orcamento-form">
-          <div class="form-group">
-            <label>Categoria</label>
-            <select id="orc-cat">
-              <option value="Alimentação">🛒 Alimentação</option>
-              <option value="Moradia">🏠 Moradia</option>
-              <option value="Transporte">🚗 Transporte</option>
-              <option value="Saúde">💊 Saúde</option>
-              <option value="Lazer/Entretenimento">🎮 Lazer</option>
-              <option value="Educação">📚 Educação</option>
-              <option value="Assinaturas/Mensalidades">📱 Assinaturas</option>
-              <option value="Água">💧 Água</option>
-              <option value="Luz/Energia">⚡ Luz/Energia</option>
-              <option value="Internet">🌐 Internet</option>
-              <option value="Outros">💡 Outros</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Limite mensal (R$)</label>
-            <input type="number" id="orc-valor" placeholder="Ex: 800" step="0.01">
-          </div>
-          <button class="btn-add" style="margin-top:0;align-self:flex-end;" onclick="salvarOrcamento()">Definir</button>
-        </div>
-        <div class="orcamento-list" id="orcamento-list">
-          <div class="empty-state"><span class="emoji">🎯</span>Nenhum orçamento definido ainda.</div>
-        </div>
+```
+  <!-- Adicionar orçamento -->
+  <div class="panel">
+    <div class="panel-title"><i data-lucide="sliders" class="w-4 h-4"></i> Orçamento por Categoria</div>
+    <div class="add-orcamento-form">
+      <div class="form-group">
+        <label>Categoria</label>
+        <select id="orc-cat">
+          <option value="Alimentação">🛒 Alimentação</option>
+          <option value="Moradia">🏠 Moradia</option>
+          <option value="Transporte">🚗 Transporte</option>
+          <option value="Saúde">💊 Saúde</option>
+          <option value="Lazer/Entretenimento">🎮 Lazer</option>
+          <option value="Educação">📚 Educação</option>
+          <option value="Assinaturas/Mensalidades">📱 Assinaturas</option>
+          <option value="Água">💧 Água</option>
+          <option value="Luz/Energia">⚡ Luz/Energia</option>
+          <option value="Internet">🌐 Internet</option>
+          <option value="Outros">💡 Outros</option>
+        </select>
       </div>
+      <div class="form-group">
+        <label>Limite mensal (R$)</label>
+        <input type="number" id="orc-valor" placeholder="Ex: 800" step="0.01">
+      </div>
+      <button class="btn-add" style="margin-top:0;align-self:flex-end;" onclick="salvarOrcamento()">Definir</button>
     </div>
+    <div class="orcamento-list" id="orcamento-list">
+      <div class="empty-state"><span class="emoji">🎯</span>Nenhum orçamento definido ainda.</div>
+    </div>
+  </div>
+</div>
 
-    <!-- Painel de progresso de todos os orçamentos -->
-    <div class="panel">
-      <div class="panel-title"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Progresso do Mês — <span id="metas-mes-label" style="color:var(--accent);"></span></div>
-      <div id="orcamento-progresso" style="display:flex;flex-direction:column;gap:14px;">
-        <div style="color:var(--muted-light);text-align:center;padding:20px;">Defina orçamentos por categoria para ver o progresso aqui.</div>
-      </div>
-    </div>
+<!-- Painel de progresso de todos os orçamentos -->
+<div class="panel">
+  <div class="panel-title"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Progresso do Mês — <span id="metas-mes-label" style="color:var(--accent);"></span></div>
+  <div id="orcamento-progresso" style="display:flex;flex-direction:column;gap:14px;">
+    <div style="color:var(--muted-light);text-align:center;padding:20px;">Defina orçamentos por categoria para ver o progresso aqui.</div>
+  </div>
+</div>
 
-    <!-- Dicas do analista -->
-    <div class="panel" style="margin-top:24px;background:linear-gradient(135deg,rgba(201,242,93,0.07),rgba(93,242,160,0.05));border-color:rgba(201,242,93,0.2);">
-      <div class="panel-title"><i data-lucide="lightbulb" class="w-4 h-4"></i> Dicas para precisão financeira</div>
-      <div style="display:flex;flex-direction:column;gap:10px;font-size:0.83rem;color:var(--muted-light);line-height:1.6;">
-        <div>📌 <strong style="color:var(--text-light)">Lance no mesmo dia</strong> — abra o Hylian assim que pagar algo. O hábito é mais importante que a perfeição.</div>
-        <div>📌 <strong style="color:var(--text-light)">Use a fatura do cartão</strong> — ao fechar a fatura, confira item por item e registre as que faltaram.</div>
-        <div>📌 <strong style="color:var(--text-light)">Separe "Investimentos" de "Poupança"</strong> — só marque como investimento o que rendeu ou está aplicado (CDB, ações, FII).</div>
-        <div>📌 <strong style="color:var(--text-light)">Regra 50/30/20</strong> — tente manter ~50% em necessidades (moradia, contas), ~30% em desejos e ~20% em economia/investimentos.</div>
-        <div>📌 <strong style="color:var(--text-light)">Mensalidades no dia certo</strong> — registre o dia de vencimento real de cada assinatura para os lembretes funcionarem direto.</div>
-      </div>
-    </div>
+<!-- Dicas do analista -->
+<div class="panel" style="margin-top:24px;background:linear-gradient(135deg,rgba(201,242,93,0.07),rgba(93,242,160,0.05));border-color:rgba(201,242,93,0.2);">
+  <div class="panel-title"><i data-lucide="lightbulb" class="w-4 h-4"></i> Dicas para precisão financeira</div>
+  <div style="display:flex;flex-direction:column;gap:10px;font-size:0.83rem;color:var(--muted-light);line-height:1.6;">
+    <div>📌 <strong style="color:var(--text-light)">Lance no mesmo dia</strong> — abra o Hylian assim que pagar algo. O hábito é mais importante que a perfeição.</div>
+    <div>📌 <strong style="color:var(--text-light)">Use a fatura do cartão</strong> — ao fechar a fatura, confira item por item e registre as que faltaram.</div>
+    <div>📌 <strong style="color:var(--text-light)">Separe "Investimentos" de "Poupança"</strong> — só marque como investimento o que rendeu ou está aplicado (CDB, ações, FII).</div>
+    <div>📌 <strong style="color:var(--text-light)">Regra 50/30/20</strong> — tente manter ~50% em necessidades (moradia, contas), ~30% em desejos e ~20% em economia/investimentos.</div>
+    <div>📌 <strong style="color:var(--text-light)">Mensalidades no dia certo</strong> — registre o dia de vencimento real de cada assinatura para os lembretes funcionarem direto.</div>
+  </div>
+</div>
+```
+
   </div>
 
   <!-- ABA PERFIL -->
+
   <div id="view-perfil" class="view-section">
     <div class="panel" style="max-width:480px;margin:0 auto;">
       <div class="perfil-header">
@@ -1715,23 +1741,26 @@ window.salvarPerfil = async function() {
         </div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:14px;">
-        <div class="form-group">
-          <label>Nome de exibição</label>
-          <input type="text" id="perfil-nome-input" placeholder="Seu nome">
-        </div>
-        <button class="btn-add" onclick="salvarPerfil()">Salvar nome</button>
-        <div style="font-size:0.75rem;color:var(--muted-light);text-align:center;margin-top:4px;">
-          A foto de perfil vem automaticamente da sua conta Google.
-        </div>
-        <hr style="border:none;border-top:1px solid var(--border-light);margin:8px 0;">
-        <div style="font-size:0.8rem;color:var(--muted-light);">
-          <strong style="color:var(--text-light);">📦 Seus dados</strong><br>
-          Todas as suas transações, cartões e metas ficam armazenados no Firebase e sincronizam automaticamente entre seus dispositivos.
-        </div>
-        <button class="btn-logout" onclick="logoutApp()">Sair da conta</button>
-      </div>
+```
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div class="form-group">
+      <label>Nome de exibição</label>
+      <input type="text" id="perfil-nome-input" placeholder="Seu nome">
     </div>
+    <button class="btn-add" onclick="salvarPerfil()">Salvar nome</button>
+    <div style="font-size:0.75rem;color:var(--muted-light);text-align:center;margin-top:4px;">
+      A foto de perfil vem automaticamente da sua conta Google.
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border-light);margin:8px 0;">
+    <div style="font-size:0.8rem;color:var(--muted-light);">
+      <strong style="color:var(--text-light);">📦 Seus dados</strong><br>
+      Todas as suas transações, cartões e metas ficam armazenados no Firebase e sincronizam automaticamente entre seus dispositivos.
+    </div>
+    <button class="btn-logout" onclick="logoutApp()">Sair da conta</button>
+  </div>
+</div>
+```
+
   </div>
 </main>
 
@@ -1770,6 +1799,7 @@ function initTheme() {
   else document.documentElement.classList.remove('dark');
   updateThemeIcon();
   updateChartTheme();
+  updateDrawerThemeLabel();
 }
 function toggleTheme() {
   document.documentElement.classList.toggle('dark');
@@ -1777,6 +1807,14 @@ function toggleTheme() {
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
   updateThemeIcon();
   updateChartTheme();
+  updateDrawerThemeLabel();
+}
+function updateDrawerThemeLabel() {
+  const isDark = document.documentElement.classList.contains('dark');
+  const icon = document.getElementById('drawer-theme-icon');
+  const label = document.getElementById('drawer-theme-label');
+  if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+  if (label) label.textContent = isDark ? 'Modo claro' : 'Modo escuro';
 }
 function updateThemeIcon() {
   const isDark = document.documentElement.classList.contains('dark');
@@ -2851,5 +2889,6 @@ const _origNextMonth = document.getElementById('next-month').onclick;
 document.getElementById('prev-month').onclick = () => { _origPrevMonth && _origPrevMonth(); renderMetas(); };
 document.getElementById('next-month').onclick = () => { _origNextMonth && _origNextMonth(); renderMetas(); };
 </script>
+
 </body>
 </html>
