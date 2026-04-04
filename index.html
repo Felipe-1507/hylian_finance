@@ -8,6 +8,166 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDrAyIa8Ibc-YCCnCdsmRvLdv4QiJjOa4o",
+  authDomain: "hylianfinance.firebaseapp.com",
+  projectId: "hylianfinance",
+  storageBucket: "hylianfinance.firebasestorage.app",
+  messagingSenderId: "327768932521",
+  appId: "1:327768932521:web:7200e81cd0a8d0222ca9b8",
+  measurementId: "G-GETJF6YC46"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+// Expor globalmente para o restante do script
+window._fb = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged, updateProfile, doc, getDoc, setDoc, collection, getDocs, deleteDoc, writeBatch };
+
+// ===== AUTH STATE =====
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    window._currentUser = user;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-shell').style.display = 'block';
+    atualizarUIUsuario(user);
+    await carregarTudoFirebase();
+    renderAll();
+    renderizarCartoes();
+    renderizarCompras();
+    renderMetas();
+  } else {
+    window._currentUser = null;
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-shell').style.display = 'none';
+  }
+});
+
+window.loginGoogle = async function() {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch(e) {
+    console.error(e);
+    toastMsg('Erro ao fazer login. Tente novamente.', 'erro');
+  }
+};
+
+window.logoutApp = async function() {
+  showModal('Sair da conta?', 'Você precisará fazer login novamente para acessar seus dados.', async () => {
+    await signOut(auth);
+    toastMsg('Até logo!');
+  });
+};
+
+// ===== FIRESTORE: carregar tudo =====
+window.carregarTudoFirebase = async function() {
+  if (!window._currentUser) return;
+  const uid = window._currentUser.uid;
+  // Transações: colecao fin_{uid}
+  // Mensalidades: doc users/{uid}/data/mensalidades
+  // Cartões: doc users/{uid}/data/cartoes
+  // Compras: doc users/{uid}/data/compras
+  // Metas: doc users/{uid}/data/metas
+  try {
+    // Mensalidades
+    const mensSnap = await getDoc(doc(db, `users/${uid}/data/mensalidades`));
+    window._mensalidades = mensSnap.exists() ? (mensSnap.data().lista || []) : [];
+
+    // Cartões
+    const cartSnap = await getDoc(doc(db, `users/${uid}/data/cartoes`));
+    window._cartoes = cartSnap.exists() ? (cartSnap.data().lista || []) : [];
+
+    // Compras
+    const compSnap = await getDoc(doc(db, `users/${uid}/data/compras`));
+    window._compras = compSnap.exists() ? (compSnap.data().lista || []) : [];
+
+    // Metas
+    const metasSnap = await getDoc(doc(db, `users/${uid}/data/metas`));
+    window._metas = metasSnap.exists() ? (metasSnap.data() || {}) : { orcamentos: {}, metaEconomia: 0 };
+    if (!window._metas.orcamentos) window._metas.orcamentos = {};
+
+    // Transações do mês atual e vizinhos (-6 meses)
+    for (let i = 0; i <= 6; i++) {
+      let m = new Date().getMonth() - i;
+      let y = new Date().getFullYear();
+      while (m < 0) { m += 12; y--; }
+      await _carregarTransacoesMes(uid, y, m);
+    }
+  } catch(e) {
+    console.error('Erro ao carregar Firebase:', e);
+  }
+};
+
+window._carregarTransacoesMes = async function(uid, year, month) {
+  const key = `fin_${year}_${month}`;
+  if (window._txCache && window._txCache[key] !== undefined) return;
+  if (!window._txCache) window._txCache = {};
+  try {
+    const snap = await getDoc(doc(db, `users/${uid}/transacoes/${key}`));
+    window._txCache[key] = snap.exists() ? (snap.data().lista || []) : [];
+  } catch(e) {
+    window._txCache[key] = [];
+  }
+};
+
+// ===== FIRESTORE: salvar helpers =====
+window._salvarTransacoesFirebase = async function(year, month, lista) {
+  if (!window._currentUser) return;
+  const uid = window._currentUser.uid;
+  const key = `fin_${year}_${month}`;
+  if (!window._txCache) window._txCache = {};
+  window._txCache[key] = lista;
+  await setDoc(doc(db, `users/${uid}/transacoes/${key}`), { lista });
+};
+
+window._salvarMensalidadesFirebase = async function(lista) {
+  if (!window._currentUser) return;
+  const uid = window._currentUser.uid;
+  window._mensalidades = lista;
+  await setDoc(doc(db, `users/${uid}/data/mensalidades`), { lista });
+};
+
+window._salvarCartoesFirebase = async function(lista) {
+  if (!window._currentUser) return;
+  const uid = window._currentUser.uid;
+  window._cartoes = lista;
+  await setDoc(doc(db, `users/${uid}/data/cartoes`), { lista });
+};
+
+window._salvarComprasFirebase = async function(lista) {
+  if (!window._currentUser) return;
+  const uid = window._currentUser.uid;
+  window._compras = lista;
+  await setDoc(doc(db, `users/${uid}/data/compras`), { lista });
+};
+
+window._salvarMetasFirebase = async function(metas) {
+  if (!window._currentUser) return;
+  const uid = window._currentUser.uid;
+  window._metas = metas;
+  await setDoc(doc(db, `users/${uid}/data/metas`), metas);
+};
+
+// ===== PERFIL: atualizar nome/foto =====
+window.salvarPerfil = async function() {
+  const nome = document.getElementById('perfil-nome-input').value.trim();
+  if (!nome) { toastMsg('Informe um nome', 'erro'); return; }
+  try {
+    await updateProfile(auth.currentUser, { displayName: nome });
+    atualizarUIUsuario(auth.currentUser);
+    toastMsg('✓ Perfil atualizado!');
+  } catch(e) {
+    toastMsg('Erro ao salvar perfil', 'erro');
+  }
+};
+</script>
 <style>
   :root {
     --bg-light: #f8fafc;
@@ -885,6 +1045,235 @@
   #drawer-overlay { display: none; }
   .fa-apple { color: #000000; }
   .dark .fa-apple { color: #ffffff; }
+
+  /* ===== TELA DE LOGIN ===== */
+  #login-screen {
+    display: flex;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-light);
+    padding: 20px;
+  }
+  .login-card {
+    background: var(--surface-light);
+    border: 1px solid var(--border-light);
+    border-radius: 24px;
+    padding: 48px 40px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.08);
+  }
+  .login-logo {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -1px;
+    margin-bottom: 6px;
+  }
+  .login-sub {
+    color: var(--muted-light);
+    font-size: 0.85rem;
+    margin-bottom: 36px;
+  }
+  .btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid var(--border-light);
+    background: var(--surface2-light);
+    color: var(--text-light);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .btn-google:hover { background: var(--border-light); transform: translateY(-1px); }
+  .login-terms {
+    margin-top: 20px;
+    font-size: 0.72rem;
+    color: var(--muted-light);
+    line-height: 1.5;
+  }
+
+  /* ===== AVATAR / PERFIL ===== */
+  .avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--accent);
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .avatar:hover { opacity: 0.85; }
+  .avatar-placeholder {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #111;
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    border: 2px solid var(--accent);
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+  }
+  .avatar-placeholder:hover { opacity: 0.85; }
+
+  /* ABA PERFIL */
+  .perfil-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 32px 0 24px;
+    border-bottom: 1px solid var(--border-light);
+    margin-bottom: 24px;
+  }
+  .perfil-avatar-big {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--accent);
+  }
+  .perfil-avatar-placeholder {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #111;
+    font-weight: 800;
+    font-size: 1.8rem;
+    display: flex; align-items: center; justify-content: center;
+    border: 3px solid var(--accent);
+  }
+  .perfil-name { font-weight: 700; font-size: 1.1rem; }
+  .perfil-email { font-size: 0.8rem; color: var(--muted-light); }
+  .perfil-status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.75rem; font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(93,242,160,0.12);
+    color: var(--green);
+  }
+  .perfil-status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(0.8)}
+  }
+  .btn-logout {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--red);
+    background: rgba(242,93,93,0.08);
+    color: var(--red);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    margin-top: 8px;
+  }
+  .btn-logout:hover { background: rgba(242,93,93,0.15); }
+
+  /* ===== METAS ===== */
+  .metas-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .meta-economia-card {
+    background: linear-gradient(135deg, rgba(201,242,93,0.15), rgba(93,242,160,0.1));
+    border: 1px solid rgba(201,242,93,0.3);
+    border-radius: 20px;
+    padding: 24px;
+  }
+  .meta-progress-wrap {
+    margin: 16px 0 8px;
+    background: var(--surface2-light);
+    border-radius: 8px;
+    height: 10px;
+    overflow: hidden;
+  }
+  .meta-progress-bar {
+    height: 100%;
+    border-radius: 8px;
+    background: var(--accent);
+    transition: width 0.5s ease;
+  }
+  .meta-progress-bar.danger { background: var(--red); }
+  .meta-progress-bar.warn { background: var(--accent2); }
+  .orcamento-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .orcamento-item {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .orcamento-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .orcamento-cat {
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .orcamento-vals {
+    font-size: 0.78rem;
+    color: var(--muted-light);
+  }
+  .orcamento-vals span { font-weight: 700; color: var(--text-light); }
+  .orcamento-track {
+    background: var(--border-light);
+    border-radius: 6px;
+    height: 7px;
+    overflow: hidden;
+  }
+  .orcamento-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.4s ease;
+  }
+  .orcamento-alerta {
+    font-size: 0.7rem;
+    margin-top: 5px;
+    font-weight: 600;
+  }
+  .orcamento-alerta.ok { color: var(--green); }
+  .orcamento-alerta.warn { color: var(--accent2); }
+  .orcamento-alerta.danger { color: var(--red); }
+  .add-orcamento-form {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    align-items: flex-end;
+  }
+  .add-orcamento-form .form-group { flex: 1; min-width: 130px; }
+  @media (max-width: 768px) {
+    .metas-grid { grid-template-columns: 1fr; }
+    .add-orcamento-form { flex-direction: column; }
+  }
   /* ===== MODAL DE CONFIRMAÇÃO ===== */
   .modal-overlay {
     display: none;
@@ -965,6 +1354,22 @@
 </style>
 </head>
 <body>
+<!-- TELA DE LOGIN -->
+<div id="login-screen" style="display:none;">
+  <div class="login-card">
+    <div class="login-logo">⟁ HYLIAN</div>
+    <div style="font-size:1.4rem;font-weight:800;color:var(--text-light);margin-bottom:4px;">Finance</div>
+    <div class="login-sub">Seu controle financeiro pessoal</div>
+    <button class="btn-google" onclick="loginGoogle()">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Entrar com Google
+    </button>
+    <div class="login-terms">Ao entrar, você concorda com o uso dos seus dados para sincronização entre dispositivos.</div>
+  </div>
+</div>
+
+<!-- APP PRINCIPAL -->
+<div id="app-shell" style="display:none;">
 <header>
   <div class="logo">
     <i data-lucide="triangle" class="w-5 h-5 fill-current"></i>
@@ -974,6 +1379,8 @@
     <div class="nav-tabs">
       <button class="nav-tab active" data-tab="resumo">Resumo</button>
       <button class="nav-tab" data-tab="cartoes">Cartões</button>
+      <button class="nav-tab" data-tab="metas">Metas</button>
+      <button class="nav-tab" data-tab="perfil">Perfil</button>
     </div>
     <div class="month-nav">
       <button id="prev-month">‹</button>
@@ -994,6 +1401,9 @@
     <button class="btn-import" onclick="document.getElementById('import-file').click()">⬆ Importar</button>
     <input type="file" id="import-file" accept=".json" style="display:none" onchange="importarJSON(this)">
     <button id="theme-toggle-btn" class="theme-toggle"><i data-lucide="moon" class="w-5 h-5"></i></button>
+    <div id="user-avatar-wrap" onclick="switchTab('perfil')" title="Meu perfil" style="cursor:pointer;">
+      <div class="avatar-placeholder" id="avatar-initials">?</div>
+    </div>
     <button id="hamburger-btn" class="theme-toggle"><i data-lucide="menu" class="w-5 h-5"></i></button>
   </div>
 </header>
@@ -1025,6 +1435,14 @@
   <button class="bottom-nav-item" id="bnav-cartoes" onclick="switchTab('cartoes')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
     Cartões
+  </button>
+  <button class="bottom-nav-item" id="bnav-metas" onclick="switchTab('metas')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+    Metas
+  </button>
+  <button class="bottom-nav-item" id="bnav-perfil" onclick="switchTab('perfil')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    Perfil
   </button>
 </nav>
 
@@ -1173,7 +1591,7 @@
     </div>
   </div>
 
-  <!-- ABA CARTÕES (original, sem alterações) -->
+  <!-- ABA CARTÕES -->
   <div id="view-cartoes" class="view-section">
     <div class="panel">
       <div class="panel-title"><i data-lucide="credit-card" class="w-4 h-4"></i> Meus Cartões</div>
@@ -1193,7 +1611,6 @@
       </div>
       <div id="cards-container" class="cards-list"></div>
     </div>
-
     <div class="panel">
       <div class="panel-title"><i data-lucide="shopping-cart" class="w-4 h-4"></i> Nova Compra</div>
       <div class="form-grid">
@@ -1206,13 +1623,119 @@
       </div>
       <button class="btn-add" onclick="adicionarCompra()">Registrar Compra</button>
     </div>
-
     <div class="panel compras-por-cartao">
       <div class="panel-title"><i data-lucide="file-text" class="w-4 h-4"></i> Compras do Mês</div>
       <div id="compras-container"></div>
     </div>
   </div>
+
+  <!-- ABA METAS -->
+  <div id="view-metas" class="view-section">
+    <div class="metas-grid">
+      <!-- Meta de economia -->
+      <div class="panel meta-economia-card">
+        <div class="panel-title"><i data-lucide="piggy-bank" class="w-4 h-4"></i> Meta de Economia Mensal</div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+          <div class="form-group">
+            <label>Receita mensal esperada (R$)</label>
+            <input type="number" id="meta-receita" placeholder="Ex: 5000" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Quero economizar (%)</label>
+            <input type="number" id="meta-pct" placeholder="Ex: 20" min="0" max="100">
+          </div>
+        </div>
+        <button class="btn-add" onclick="salvarMetaEconomia()">Salvar Meta</button>
+        <div id="meta-economia-resultado" style="margin-top:18px;"></div>
+      </div>
+
+      <!-- Adicionar orçamento -->
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="sliders" class="w-4 h-4"></i> Orçamento por Categoria</div>
+        <div class="add-orcamento-form">
+          <div class="form-group">
+            <label>Categoria</label>
+            <select id="orc-cat">
+              <option value="Alimentação">🛒 Alimentação</option>
+              <option value="Moradia">🏠 Moradia</option>
+              <option value="Transporte">🚗 Transporte</option>
+              <option value="Saúde">💊 Saúde</option>
+              <option value="Lazer/Entretenimento">🎮 Lazer</option>
+              <option value="Educação">📚 Educação</option>
+              <option value="Assinaturas/Mensalidades">📱 Assinaturas</option>
+              <option value="Água">💧 Água</option>
+              <option value="Luz/Energia">⚡ Luz/Energia</option>
+              <option value="Internet">🌐 Internet</option>
+              <option value="Outros">💡 Outros</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Limite mensal (R$)</label>
+            <input type="number" id="orc-valor" placeholder="Ex: 800" step="0.01">
+          </div>
+          <button class="btn-add" style="margin-top:0;align-self:flex-end;" onclick="salvarOrcamento()">Definir</button>
+        </div>
+        <div class="orcamento-list" id="orcamento-list">
+          <div class="empty-state"><span class="emoji">🎯</span>Nenhum orçamento definido ainda.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Painel de progresso de todos os orçamentos -->
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Progresso do Mês — <span id="metas-mes-label" style="color:var(--accent);"></span></div>
+      <div id="orcamento-progresso" style="display:flex;flex-direction:column;gap:14px;">
+        <div style="color:var(--muted-light);text-align:center;padding:20px;">Defina orçamentos por categoria para ver o progresso aqui.</div>
+      </div>
+    </div>
+
+    <!-- Dicas do analista -->
+    <div class="panel" style="margin-top:24px;background:linear-gradient(135deg,rgba(201,242,93,0.07),rgba(93,242,160,0.05));border-color:rgba(201,242,93,0.2);">
+      <div class="panel-title"><i data-lucide="lightbulb" class="w-4 h-4"></i> Dicas para precisão financeira</div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:0.83rem;color:var(--muted-light);line-height:1.6;">
+        <div>📌 <strong style="color:var(--text-light)">Lance no mesmo dia</strong> — abra o Hylian assim que pagar algo. O hábito é mais importante que a perfeição.</div>
+        <div>📌 <strong style="color:var(--text-light)">Use a fatura do cartão</strong> — ao fechar a fatura, confira item por item e registre as que faltaram.</div>
+        <div>📌 <strong style="color:var(--text-light)">Separe "Investimentos" de "Poupança"</strong> — só marque como investimento o que rendeu ou está aplicado (CDB, ações, FII).</div>
+        <div>📌 <strong style="color:var(--text-light)">Regra 50/30/20</strong> — tente manter ~50% em necessidades (moradia, contas), ~30% em desejos e ~20% em economia/investimentos.</div>
+        <div>📌 <strong style="color:var(--text-light)">Mensalidades no dia certo</strong> — registre o dia de vencimento real de cada assinatura para os lembretes funcionarem direto.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABA PERFIL -->
+  <div id="view-perfil" class="view-section">
+    <div class="panel" style="max-width:480px;margin:0 auto;">
+      <div class="perfil-header">
+        <div id="perfil-avatar-wrap"></div>
+        <div class="perfil-name" id="perfil-display-name">—</div>
+        <div class="perfil-email" id="perfil-display-email">—</div>
+        <div class="perfil-status">
+          <div class="perfil-status-dot"></div>
+          Conectado ao Firebase
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="form-group">
+          <label>Nome de exibição</label>
+          <input type="text" id="perfil-nome-input" placeholder="Seu nome">
+        </div>
+        <button class="btn-add" onclick="salvarPerfil()">Salvar nome</button>
+        <div style="font-size:0.75rem;color:var(--muted-light);text-align:center;margin-top:4px;">
+          A foto de perfil vem automaticamente da sua conta Google.
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border-light);margin:8px 0;">
+        <div style="font-size:0.8rem;color:var(--muted-light);">
+          <strong style="color:var(--text-light);">📦 Seus dados</strong><br>
+          Todas as suas transações, cartões e metas ficam armazenados no Firebase e sincronizam automaticamente entre seus dispositivos.
+        </div>
+        <button class="btn-logout" onclick="logoutApp()">Sair da conta</button>
+      </div>
+    </div>
+  </div>
 </main>
+
+</div><!-- fim #app-shell -->
 
 <footer>
   Desenvolvido por <a href="https://egrkfvzf.manus.space/" target="_blank" rel="noopener noreferrer">Felipe Ferreira</a>
@@ -1354,18 +1877,21 @@ let ordemAtual = 'date-desc';
 function getKey(year, month) { return `fin_${year}_${month}`; }
 function getMensKey() { return 'fin_mensalidades'; }
 function carregarTransacoes(year, month) {
-  try { return JSON.parse(localStorage.getItem(getKey(year, month))) || []; }
-  catch { return []; }
+  if (!window._txCache) window._txCache = {};
+  const key = `fin_${year}_${month}`;
+  return window._txCache[key] || [];
 }
 function salvarTransacoes(year, month, data) {
-  localStorage.setItem(getKey(year, month), JSON.stringify(data));
+  if (!window._txCache) window._txCache = {};
+  window._txCache[`fin_${year}_${month}`] = data;
+  window._salvarTransacoesFirebase && window._salvarTransacoesFirebase(year, month, data);
 }
 function carregarMensalidades() {
-  try { return JSON.parse(localStorage.getItem(getMensKey())) || []; }
-  catch { return []; }
+  return window._mensalidades || [];
 }
 function salvarMensalidades(data) {
-  localStorage.setItem(getMensKey(), JSON.stringify(data));
+  window._mensalidades = data;
+  window._salvarMensalidadesFirebase && window._salvarMensalidadesFirebase(data);
 }
 function moeda(v) {
   return 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits: 2});
@@ -1778,14 +2304,19 @@ document.getElementById('next-month').onclick = () => {
   updateMonthLabel(); renderAll();
 };
 function exportarJSON() {
-  const allData = {};
-  for (let k in localStorage) {
-    if (k.startsWith('fin_') || k === 'hylian_cartoes' || k === 'hylian_compras') allData[k] = JSON.parse(localStorage.getItem(k));
+  const allData = {
+    mensalidades: window._mensalidades || [],
+    cartoes: window._cartoes || [],
+    compras: window._compras || [],
+    metas: window._metas || {},
+  };
+  if (window._txCache) {
+    Object.entries(window._txCache).forEach(([k, v]) => { allData[k] = v; });
   }
   const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `financas_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.href = url; a.download = `hylian_backup_${new Date().toISOString().slice(0,10)}.json`;
   a.click(); URL.revokeObjectURL(url);
   toastMsg('✓ Backup exportado!');
 }
@@ -1793,32 +2324,43 @@ function importarJSON(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
       const data = JSON.parse(e.target.result);
-      Object.entries(data).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
+      if (data.mensalidades) { window._mensalidades = data.mensalidades; await window._salvarMensalidadesFirebase(data.mensalidades); }
+      if (data.cartoes) { window._cartoes = data.cartoes; await window._salvarCartoesFirebase(data.cartoes); }
+      if (data.compras) { window._compras = data.compras; await window._salvarComprasFirebase(data.compras); }
+      if (data.metas) { window._metas = data.metas; await window._salvarMetasFirebase(data.metas); }
+      // Importar transações mensais
+      for (const [k, v] of Object.entries(data)) {
+        if (k.startsWith('fin_')) {
+          if (!window._txCache) window._txCache = {};
+          window._txCache[k] = v;
+          const parts = k.split('_');
+          const year = parseInt(parts[1]); const month = parseInt(parts[2]);
+          await window._salvarTransacoesFirebase(year, month, v);
+        }
+      }
       toastMsg('✓ Dados importados com sucesso!');
-      renderAll();
-      renderizarCartoes();
-      renderizarCompras();
-    } catch { toastMsg('Arquivo inválido!', 'erro'); }
+      renderAll(); renderizarCartoes(); renderizarCompras(); renderMetas();
+    } catch(err) { console.error(err); toastMsg('Arquivo inválido!', 'erro'); }
   };
   reader.readAsText(file);
   input.value = '';
 }
 document.getElementById('tx-data').value = new Date().toISOString().split('T')[0];
 updateMonthLabel();
-renderAll();
 
 // ===================== MÓDULO CARTÕES =====================
-function getCartoes() {
-  try { return JSON.parse(localStorage.getItem('hylian_cartoes')) || []; }
-  catch { return []; }
+function getCartoes() { return window._cartoes || []; }
+function salvarCartoes(c) {
+  window._cartoes = c;
+  window._salvarCartoesFirebase && window._salvarCartoesFirebase(c);
 }
-function salvarCartoes(c) { localStorage.setItem('hylian_cartoes', JSON.stringify(c)); }
-function getCompras() {
-  try { return JSON.parse(localStorage.getItem('hylian_compras')) || []; }
-  catch { return []; }
+function getCompras() { return window._compras || []; }
+function salvarCompras(c) {
+  window._compras = c;
+  window._salvarComprasFirebase && window._salvarComprasFirebase(c);
 }
 // Retorna as parcelas que devem aparecer no mês (ano, mês)
 function getInstallmentTransactionsForMonth(year, month) {
@@ -1884,7 +2426,10 @@ function getSubscriptionTransactionsForMonth(year, month) {
 }
 
 
-function salvarCompras(c) { localStorage.setItem('hylian_compras', JSON.stringify(c)); }
+function salvarCompras(c) {
+  window._compras = c;
+  window._salvarComprasFirebase && window._salvarComprasFirebase(c);
+}
 function formatCardNumber(n) {
   if (!n) return "**** **** **** ****";
   const d = n.replace(/\D/g, '');
@@ -2156,10 +2701,155 @@ window.removerCompra = function(id) {
 };
 document.getElementById('apply-filters').addEventListener('click', aplicarFiltros);
 document.getElementById('clear-filters').addEventListener('click', limparFiltros);
-atualizarSelectCartoes();
-renderizarCartoes();
-renderizarCompras();
 lucide.createIcons();
+
+// ===================== PERFIL UI =====================
+function atualizarUIUsuario(user) {
+  if (!user) return;
+  const wrap = document.getElementById('user-avatar-wrap');
+  const perfilWrap = document.getElementById('perfil-avatar-wrap');
+  const avatarHTML = user.photoURL
+    ? `<img src="${user.photoURL}" class="avatar" alt="avatar">`
+    : `<div class="avatar-placeholder">${(user.displayName||user.email||'?')[0].toUpperCase()}</div>`;
+  const perfilBigHTML = user.photoURL
+    ? `<img src="${user.photoURL}" class="perfil-avatar-big" alt="avatar">`
+    : `<div class="perfil-avatar-placeholder">${(user.displayName||user.email||'?')[0].toUpperCase()}</div>`;
+  if (wrap) wrap.innerHTML = avatarHTML;
+  if (perfilWrap) perfilWrap.innerHTML = perfilBigHTML;
+  const nameEl = document.getElementById('perfil-display-name');
+  const emailEl = document.getElementById('perfil-display-email');
+  const inputEl = document.getElementById('perfil-nome-input');
+  if (nameEl) nameEl.textContent = user.displayName || 'Sem nome';
+  if (emailEl) emailEl.textContent = user.email || '';
+  if (inputEl) inputEl.value = user.displayName || '';
+}
+
+// ===================== METAS =====================
+function getMetas() { return window._metas || { orcamentos: {}, metaEconomia: 0, metaReceita: 0 }; }
+
+function salvarMetaEconomia() {
+  const receita = parseFloat(document.getElementById('meta-receita').value);
+  const pct = parseFloat(document.getElementById('meta-pct').value);
+  if (!receita || receita <= 0 || !pct || pct <= 0 || pct > 100) {
+    toastMsg('Preencha os campos corretamente!', 'erro'); return;
+  }
+  const metas = getMetas();
+  metas.metaReceita = receita;
+  metas.metaEconomia = pct;
+  window._salvarMetasFirebase && window._salvarMetasFirebase(metas);
+  toastMsg('🎯 Meta salva!');
+  renderMetas();
+}
+
+function salvarOrcamento() {
+  const cat = document.getElementById('orc-cat').value;
+  const valor = parseFloat(document.getElementById('orc-valor').value);
+  if (!valor || valor <= 0) { toastMsg('Informe um valor válido!', 'erro'); return; }
+  const metas = getMetas();
+  if (!metas.orcamentos) metas.orcamentos = {};
+  metas.orcamentos[cat] = valor;
+  window._salvarMetasFirebase && window._salvarMetasFirebase(metas);
+  document.getElementById('orc-valor').value = '';
+  toastMsg(`✓ Orçamento de ${cat} definido!`);
+  renderMetas();
+}
+
+function removerOrcamento(cat) {
+  const metas = getMetas();
+  if (metas.orcamentos) delete metas.orcamentos[cat];
+  window._salvarMetasFirebase && window._salvarMetasFirebase(metas);
+  renderMetas();
+}
+
+function renderMetas() {
+  const metas = getMetas();
+  const txs = carregarTransacoes(currentYear, currentMonth);
+  const subTxs = getSubscriptionTransactionsForMonth(currentYear, currentMonth);
+  const parcelaTxs = getInstallmentTransactionsForMonth(currentYear, currentMonth);
+  const allTxs = [...txs, ...subTxs, ...parcelaTxs].filter(t => t.tipo === 'despesa');
+
+  // Label do mês
+  const label = document.getElementById('metas-mes-label');
+  if (label) label.textContent = `${MESES[currentMonth]} ${currentYear}`;
+
+  // Preencher campos se já salvos
+  if (metas.metaReceita) document.getElementById('meta-receita').value = metas.metaReceita;
+  if (metas.metaEconomia) document.getElementById('meta-pct').value = metas.metaEconomia;
+
+  // Meta de economia resultado
+  const resultEl = document.getElementById('meta-economia-resultado');
+  if (resultEl && metas.metaReceita && metas.metaEconomia) {
+    const totalDespesas = allTxs.reduce((s,t) => s+t.valor, 0);
+    const metaEcon = metas.metaReceita * (metas.metaEconomia / 100);
+    const sobra = metas.metaReceita - totalDespesas;
+    const pctAtingido = Math.min((sobra / metaEcon) * 100, 100);
+    const cor = pctAtingido >= 100 ? 'var(--green)' : pctAtingido >= 60 ? 'var(--accent2)' : 'var(--red)';
+    const barClass = pctAtingido >= 100 ? '' : pctAtingido >= 60 ? 'warn' : 'danger';
+    resultEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:6px;">
+        <span style="color:var(--muted-light)">Meta: <strong style="color:var(--text-light)">${moeda(metaEcon)}/mês (${metas.metaEconomia}%)</strong></span>
+        <span style="color:${cor};font-weight:700;">${pctAtingido >= 100 ? '✓ Atingida!' : Math.round(pctAtingido)+'%'}</span>
+      </div>
+      <div class="meta-progress-wrap">
+        <div class="meta-progress-bar ${barClass}" style="width:${Math.max(pctAtingido,0)}%"></div>
+      </div>
+      <div style="font-size:0.78rem;color:var(--muted-light);margin-top:6px;">
+        Sobra atual: <strong style="color:${sobra>=0?'var(--green)':'var(--red)'}">${sobra>=0?'+':''}${moeda(sobra)}</strong>
+        &nbsp;·&nbsp; Gastou: <strong>${moeda(totalDespesas)}</strong> de <strong>${moeda(metas.metaReceita)}</strong>
+      </div>`;
+  } else if (resultEl) {
+    resultEl.innerHTML = '<div style="font-size:0.8rem;color:var(--muted-light);">Defina sua receita e percentual acima para ver o progresso.</div>';
+  }
+
+  // Lista de orçamentos cadastrados
+  const listEl = document.getElementById('orcamento-list');
+  const orc = metas.orcamentos || {};
+  if (!Object.keys(orc).length) {
+    listEl.innerHTML = '<div class="empty-state"><span class="emoji">🎯</span>Nenhum orçamento definido ainda.</div>';
+  } else {
+    listEl.innerHTML = Object.entries(orc).map(([cat, limite]) => {
+      const gasto = allTxs.filter(t => t.cat === cat).reduce((s,t) => s+t.valor, 0);
+      return `<div class="orcamento-item" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;">
+        <span style="font-size:0.85rem;font-weight:600;">${CAT_ICONS[cat]||'💡'} ${cat}</span>
+        <span style="font-size:0.8rem;color:var(--muted-light);">${moeda(gasto)} / ${moeda(limite)}</span>
+        <button onclick="removerOrcamento('${cat}')" style="background:none;border:none;color:var(--muted-light);cursor:pointer;font-size:0.9rem;padding:2px 6px;">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  // Painel de progresso
+  const progEl = document.getElementById('orcamento-progresso');
+  if (!Object.keys(orc).length) {
+    progEl.innerHTML = '<div style="color:var(--muted-light);text-align:center;padding:20px;">Defina orçamentos por categoria para ver o progresso aqui.</div>';
+    return;
+  }
+  progEl.innerHTML = Object.entries(orc).map(([cat, limite]) => {
+    const gasto = allTxs.filter(t => t.cat === cat).reduce((s,t) => s+t.valor, 0);
+    const pct = Math.min((gasto / limite) * 100, 100);
+    const cor = pct >= 100 ? 'var(--red)' : pct >= 80 ? '#f2c94c' : 'var(--green)';
+    const alerta = pct >= 100 ? { cls:'danger', msg:`⚠ Limite estourado em ${moeda(gasto-limite)}!` }
+                 : pct >= 80  ? { cls:'warn',   msg:`⚡ ${Math.round(100-pct)}% restante do limite` }
+                 :               { cls:'ok',     msg:`✓ ${Math.round(100-pct)}% restante — dentro do limite` };
+    return `<div class="orcamento-item">
+      <div class="orcamento-header">
+        <div class="orcamento-cat">${CAT_ICONS[cat]||'💡'} ${cat}</div>
+        <div class="orcamento-vals">
+          <span>${moeda(gasto)}</span> / ${moeda(limite)}
+        </div>
+      </div>
+      <div class="orcamento-track">
+        <div class="orcamento-fill" style="width:${pct}%;background:${cor};"></div>
+      </div>
+      <div class="orcamento-alerta ${alerta.cls}">${alerta.msg}</div>
+    </div>`;
+  }).join('');
+}
+
+// Atualiza metas quando muda de mês
+const _origPrevMonth = document.getElementById('prev-month').onclick;
+const _origNextMonth = document.getElementById('next-month').onclick;
+document.getElementById('prev-month').onclick = () => { _origPrevMonth && _origPrevMonth(); renderMetas(); };
+document.getElementById('next-month').onclick = () => { _origNextMonth && _origNextMonth(); renderMetas(); };
 </script>
 </body>
 </html>
