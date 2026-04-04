@@ -882,38 +882,57 @@ window.salvarPerfil = async function() {
     /* Toast acima do bottom nav */
     .toast { bottom: 80px; right: 16px; left: 16px; right: 16px; text-align: center; }
 
-    /* Header simplificado */
+    /* Header mobile limpo */
     header {
-      padding: 10px 14px;
+      padding: 0 12px;
+      height: 52px;
       flex-wrap: nowrap;
-      gap: 6px;
+      gap: 0;
       position: sticky;
       top: 0;
       z-index: 200;
-      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
-    .logo { font-size: 1rem; flex-shrink: 0; }
 
-    /* Esconde nav-tabs do header (vira bottom nav) */
+    /* Logo só ícone + nome curto */
+    .logo { font-size: 0.85rem; gap: 5px; flex-shrink: 0; }
+    .logo-text-short { display: inline; }
+
+    /* Mês centralizado no meio do header (só mobile) */
+    .month-nav-center {
+      display: flex !important;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      gap: 4px;
+      align-items: center;
+    }
+    .month-nav-center button { width: 26px; height: 26px; font-size: 1rem; }
+    #month-label { font-size: 0.8rem; min-width: 80px; text-align: center; }
+
+    /* Esconde a navegação de mês do header-right no mobile */
+    .month-nav-desktop { display: none !important; }
+
+    /* Esconde nav-tabs (vira bottom nav) */
     .nav-tabs { display: none; }
 
-    /* Botões do header viram ícones compactos */
+    /* Esconde exportar/importar */
     .btn-export, .btn-import { display: none; }
 
-    /* Navegação de mês */
-    .month-nav { gap: 4px; flex-shrink: 0; }
-    .month-nav button { width: 28px; height: 28px; font-size: 1rem; }
-    #month-label { font-size: 0.75rem; min-width: 90px; }
-
-    /* Header right — flex, sem quebra, itens centralizados */
+    /* Header right — só ícones essenciais */
     .header-right {
-      gap: 4px;
+      gap: 2px;
       flex-wrap: nowrap;
       align-items: center;
       flex-shrink: 0;
     }
 
-    /* Avatar no header — tamanho fixo, sem encolher */
+    /* Ícones menores no mobile */
+    .theme-toggle { padding: 6px; }
+
+    /* Avatar */
     #user-avatar-wrap { flex-shrink: 0; display: flex; align-items: center; }
     #user-avatar-wrap .avatar,
     #user-avatar-wrap .avatar-placeholder {
@@ -923,7 +942,7 @@ window.salvarPerfil = async function() {
       flex-shrink: 0;
     }
 
-    /* Menu hamburguer */
+    /* Hamburguer visível */
     #hamburger-btn { display: flex; flex-shrink: 0; padding: 6px; }
 
     /* Drawer lateral */
@@ -1060,8 +1079,9 @@ window.salvarPerfil = async function() {
   #hamburger-btn:hover { background: var(--border-light); }
   #mobile-drawer { display: none; }
   #drawer-overlay { display: none; }
-  .fa-apple { color: #000000; }
-  .dark .fa-apple { color: #ffffff; }
+  /* Desktop: esconde mês centralizado, mostra o normal */
+  .month-nav-center { display: none; }
+  .month-nav-desktop { display: flex; }
 
   /* ===== TELA DE LOGIN ===== */
   #login-screen {
@@ -1390,7 +1410,12 @@ window.salvarPerfil = async function() {
 <header>
   <div class="logo">
     <i data-lucide="triangle" class="w-5 h-5 fill-current"></i>
-    HYLIAN FINANCE
+    <span class="logo-text-short">HYLIAN</span>
+  </div>
+  <div class="month-nav month-nav-center" id="month-nav-center-mobile">
+    <button id="prev-month">‹</button>
+    <span id="month-label"></span>
+    <button id="next-month">›</button>
   </div>
   <div class="header-right">
     <div class="nav-tabs">
@@ -1399,10 +1424,10 @@ window.salvarPerfil = async function() {
       <button class="nav-tab" data-tab="metas">Metas</button>
       <button class="nav-tab" data-tab="perfil">Perfil</button>
     </div>
-    <div class="month-nav">
-      <button id="prev-month">‹</button>
-      <span id="month-label"></span>
-      <button id="next-month">›</button>
+    <div class="month-nav month-nav-desktop">
+      <button id="prev-month-d">‹</button>
+      <span id="month-label-d"></span>
+      <button id="next-month-d">›</button>
     </div>
     <div class="relative" id="notification-container">
       <button id="notification-bell" class="theme-toggle" style="position: relative;">
@@ -2308,18 +2333,30 @@ function renderChartEvolucao() {
   window.chartEvolucao = chartEvolucao;
 }
 function updateMonthLabel() {
-  document.getElementById('month-label').textContent = `${MESES[currentMonth]} ${currentYear}`;
+  const label = `${MESES[currentMonth]} ${currentYear}`;
+  const el1 = document.getElementById('month-label');
+  const el2 = document.getElementById('month-label-d');
+  if (el1) el1.textContent = label;
+  if (el2) el2.textContent = label;
 }
-document.getElementById('prev-month').onclick = () => {
+
+// Prev/Next — suporte aos dois controles (mobile e desktop)
+function prevMonth() {
   currentMonth--;
   if (currentMonth < 0) { currentMonth = 11; currentYear--; }
-  updateMonthLabel(); renderAll();
-};
-document.getElementById('next-month').onclick = () => {
+  updateMonthLabel(); renderAll(); renderMetas();
+}
+function nextMonth() {
   currentMonth++;
   if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-  updateMonthLabel(); renderAll();
-};
+  updateMonthLabel(); renderAll(); renderMetas();
+}
+document.getElementById('prev-month').onclick = prevMonth;
+document.getElementById('next-month').onclick = nextMonth;
+const prevD = document.getElementById('prev-month-d');
+const nextD = document.getElementById('next-month-d');
+if (prevD) prevD.onclick = prevMonth;
+if (nextD) nextD.onclick = nextMonth;
 function exportarJSON() {
   const allData = {
     mensalidades: window._mensalidades || [],
@@ -2384,6 +2421,7 @@ updateMonthLabel();
 function getCartoes() { return window._cartoes || []; }
 function salvarCartoes(c) {
   window._cartoes = c;
+  _tabRendered.cartoes = false; // força re-render na próxima visita
   window._salvarCartoesFirebase && window._salvarCartoesFirebase(c);
 }
 function getCompras() { return window._compras || []; }
@@ -2657,15 +2695,28 @@ document.getElementById('hamburger-btn').addEventListener('click', openDrawer);
 document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
 document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
 
+// Controla quais abas já foram renderizadas (evita re-render desnecessário)
+const _tabRendered = {};
+
 function switchTab(tab) {
+  // Troca visual imediata — sem esperar nenhum JS pesado
   document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
   document.getElementById(`view-${tab}`).classList.add('active');
-  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(b => { if(b.dataset.tab === tab) b.classList.add('active'); });
+  document.querySelectorAll('.nav-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
   document.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
   const bnavEl = document.getElementById(`bnav-${tab}`);
   if (bnavEl) bnavEl.classList.add('active');
-  if (tab === 'cartoes') { renderizarCartoes(); renderizarCompras(); }
+
+  // Renderiza conteúdo da aba só se necessário (lazy)
+  if (tab === 'cartoes' && !_tabRendered.cartoes) {
+    _tabRendered.cartoes = true;
+    renderizarCartoes();
+    renderizarCompras();
+  } else if (tab === 'metas') {
+    renderMetas(); // metas sempre atualiza (depende do mês)
+  }
 }
 // Sync desktop tabs com bottom nav
 document.querySelectorAll('.nav-tab').forEach(btn => {
@@ -2874,11 +2925,8 @@ function renderMetas() {
   }).join('');
 }
 
-// Atualiza metas quando muda de mês
-const _origPrevMonth = document.getElementById('prev-month').onclick;
-const _origNextMonth = document.getElementById('next-month').onclick;
-document.getElementById('prev-month').onclick = () => { _origPrevMonth && _origPrevMonth(); renderMetas(); };
-document.getElementById('next-month').onclick = () => { _origNextMonth && _origNextMonth(); renderMetas(); };
+// Metas: renderiza quando muda de aba para ela
+// (já tratado no switchTab acima)
 </script>
 </body>
 </html>
