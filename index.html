@@ -711,12 +711,12 @@ window.salvarPerfil = async function() {
     padding: 10px 14px;
   }
   .mens-dia {
-    background: var(--surface2-light);
+    background: rgba(225,6,44,0.12);
     padding: 4px 8px;
     border-radius: 20px;
     font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--accent2);
+    font-weight: 700;
+    color: #ff7b94;
   }
   .mens-nome {
     font-weight: 500;
@@ -724,7 +724,7 @@ window.salvarPerfil = async function() {
   }
   .mens-val {
     font-weight: 700;
-    color: var(--accent2);
+    color: #ff6b86;
   }
   .mens-del {
     background: none;
@@ -750,8 +750,8 @@ window.salvarPerfil = async function() {
     padding: 8px 14px;
     border-radius: 12px;
     border: none;
-    background: var(--accent2);
-    color: #111;
+    background: linear-gradient(135deg, #e1062c 0%, #ff355d 100%);
+    color: #fff;
     font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
@@ -878,7 +878,7 @@ window.salvarPerfil = async function() {
   }
   .compra-valor {
     font-weight: 700;
-    color: var(--accent2);
+    color: #ff6b86;
   }
   .compra-del {
     background: none;
@@ -1788,6 +1788,7 @@ input:focus, select:focus, textarea:focus {
   padding: 1px;
   background: linear-gradient(135deg, rgba(225,6,44,0.4), rgba(255,255,255,0.02));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
           mask-composite: exclude;
   pointer-events: none;
@@ -2249,8 +2250,6 @@ input:focus, select:focus, textarea:focus {
         <div>📌 <strong style="color:var(--text-light)">Mensalidades no dia certo</strong> — registre o dia de vencimento real de cada assinatura para os lembretes funcionarem direto.</div>
       </div>
     </div>
-  </div>
-
 
     <!-- PAINEL MIRAIX PLANEJADOR -->
     <div class="panel miraix-metas-panel">
@@ -2284,6 +2283,7 @@ input:focus, select:focus, textarea:focus {
         <button class="btn-add" onclick="miraixAplicar()" style="margin-top:0;">✓ Aplicar esta meta no sistema</button>
       </div>
     </div>
+  </div>
 
   <!-- ABA PERFIL -->
   <div id="view-perfil" class="view-section">
@@ -2387,32 +2387,33 @@ let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth();
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const SERVICO_CORES = {
-  'Netflix': '#e50914',
-  'YouTube': '#ff0000',
-  'Amazon': '#ff9900',
-  'Apple': 'FFFFFF',
-  'Spotify': '#1db954',
+  'Netflix': '#E31A2A',
+  'YouTube': '#E31A2A',
+  'Amazon': '#ff5a6e',
+  'Apple': '#ff5a6e',
+  'Spotify': '#ff5a6e',
   'Academia': '#60a5fa',
-  'Disney+': '#113ccf',
-  'HBO Max': '#6f2da8',
-  'Mercado Livre': '#ffe600',
-  'iFood': '#ea1d2c',
-  'Discord': '#5865f2',
+  'Disney+': '#4f7fd1',
+  'HBO Max': '#ff5a6e',
+  'Mercado Livre': '#ff5a6e',
+  'iFood': '#E31A2A',
+  'Discord': '#7289da',
 };
 const CAT_COLORS = {
   'Moradia': '#E31A2A',
-  'Lazer/Entretenimento': '#ff6b35',
-  'Assinaturas/Mensalidades': '#5b8fd4',
-  'Alimentação': '#f5a623',
-  'Transporte': '#a78bca',
-  'Saúde': '#3db8a0',
-  'Educação': '#e06fa0',
-  'Investimentos': '#52b870',
-  'Salário': '#52b870',
-  'Outros': '#8899aa',
-  'Água': '#4a9fd4',
-  'Luz/Energia': '#e0b030',
-  'Internet': '#30b0c0',
+  'Alimentação': '#ff4d6d',
+  'Lazer': '#b4233c',
+  'Lazer/Entretenimento': '#b4233c',
+  'Transporte': '#c93b54',
+  'Assinaturas/Mensalidades': '#4f7fd1',
+  'Saúde': '#2f7d68',
+  'Educação': '#d14b69',
+  'Investimentos': '#2f7d68',
+  'Salário': '#2f7d68',
+  'Outros': '#7f8a99',
+  'Água': '#4f7fd1',
+  'Luz/Energia': '#e06b3c',
+  'Internet': '#4f7fd1',
 };
 const CAT_ICONS = {
   'Moradia': '🏠',
@@ -2827,7 +2828,7 @@ function renderChartPizza(txs) {
   const colorsTheme = getChartColors();
   chartPizza = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: 'var(--surface-light)', hoverOffset: 6 }] },
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#10131a', hoverOffset: 6 }] },
     options: {
       responsive: true, maintainAspectRatio: false, cutout: '62%',
       plugins: {
@@ -2857,8 +2858,8 @@ function renderChartEvolucao() {
   chartEvolucao = new Chart(ctx, {
     type: 'bar',
     data: { labels: months, datasets: [
-      { label: 'Receitas', data: receitas, backgroundColor: 'rgba(93,242,160,0.7)', borderRadius: 8 },
-      { label: 'Despesas', data: despesas, backgroundColor: 'rgba(242,93,93,0.7)', borderRadius: 8 }
+      { label: 'Receitas', data: receitas, backgroundColor: 'rgba(47,125,104,0.78)', borderRadius: 8 },
+      { label: 'Despesas', data: despesas, backgroundColor: 'rgba(225,6,44,0.78)', borderRadius: 8 }
     ] },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -3736,6 +3737,10 @@ function miraixAplicar() {
   if (_miraixDados.poupancaMensal && _miraixDados.percentualRenda && recEl && !recEl.value) {
     recEl.value = Math.round((_miraixDados.poupancaMensal / _miraixDados.percentualRenda) * 100);
   }
+  const metas = getMetas();
+  metas.metaEconomia = parseFloat(pctEl?.value || 0) || metas.metaEconomia || 0;
+  metas.metaReceita = parseFloat(recEl?.value || 0) || metas.metaReceita || 0;
+  window._salvarMetasFirebase && window._salvarMetasFirebase(metas);
   toastMsg('✓ Meta aplicada!');
   renderMetas();
   document.getElementById('meta-receita')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
