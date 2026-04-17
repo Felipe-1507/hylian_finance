@@ -144,19 +144,21 @@ window.carregarTudoFirebase = async function() {
     }
 
     // Dispara TUDO em paralelo — muito mais rápido que sequencial
-    const [mensSnap, cartSnap, compSnap, metasSnap, ...txSnaps] = await Promise.all([
+    const [mensSnap, cartSnap, compSnap, metasSnap, invSnap, ...txSnaps] = await Promise.all([
       getDoc(doc(db, `users/${uid}/data/mensalidades`)),
       getDoc(doc(db, `users/${uid}/data/cartoes`)),
       getDoc(doc(db, `users/${uid}/data/compras`)),
       getDoc(doc(db, `users/${uid}/data/metas`)),
+      getDoc(doc(db, `users/${uid}/data/investimentos`)),
       ...meses.map(({ y, m }) => getDoc(doc(db, `users/${uid}/transacoes/fin_${y}_${m}`)))
     ]);
 
     // Processa resultados
-    window._mensalidades = mensSnap.exists() ? (mensSnap.data().lista || []) : [];
-    window._cartoes      = cartSnap.exists()  ? (cartSnap.data().lista  || []) : [];
-    window._compras      = compSnap.exists()  ? (compSnap.data().lista  || []) : [];
-    window._metas        = metasSnap.exists() ? (metasSnap.data() || {}) : { orcamentos: {}, metaEconomia: 0 };
+    window._mensalidades   = mensSnap.exists()  ? (mensSnap.data().lista   || []) : [];
+    window._cartoes        = cartSnap.exists()   ? (cartSnap.data().lista   || []) : [];
+    window._compras        = compSnap.exists()   ? (compSnap.data().lista   || []) : [];
+    window._metas          = metasSnap.exists()  ? (metasSnap.data()        || {}) : { orcamentos: {}, metaEconomia: 0 };
+    window._investimentos  = invSnap.exists()    ? (invSnap.data().lista    || []) : [];
     if (!window._metas.orcamentos) window._metas.orcamentos = {};
 
     if (!window._txCache) window._txCache = {};
@@ -199,6 +201,13 @@ window._salvarMensalidadesFirebase = async function(lista) {
   const uid = window._currentUser.uid;
   window._mensalidades = lista;
   await setDoc(doc(db, `users/${uid}/data/mensalidades`), { lista });
+};
+
+window._salvarInvestimentosFirebase = async function(lista) {
+  if (!window._currentUser) return;
+  const uid = window._currentUser.uid;
+  window._investimentos = lista;
+  await setDoc(doc(db, `users/${uid}/data/investimentos`), { lista });
 };
 
 window._salvarCartoesFirebase = async function(lista) {
@@ -1842,79 +1851,427 @@ input:focus, select:focus, textarea:focus {
   .miraix-analise { font-size:0.82rem; color:var(--muted-light); line-height:1.6; margin-bottom:12px; white-space:pre-line; }
   @media (max-width:768px) { .miraix-cards { grid-template-columns:1fr; } }
 
-  /* ══════════════════════════════════════════════
-     MIRAI CARDS — SISTEMA VISUAL PREMIUM
-  ══════════════════════════════════════════════ */
-  .add-card-row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:28px; }
-  .add-card-row .form-group { flex:1; min-width:180px; }
-  .bank-select {
-    width:100%; padding:10px 14px; border-radius:12px;
-    border:1px solid var(--border-light); background:var(--surface2-light);
-    color:var(--text-light); font-family:inherit; font-size:.85rem;
-    cursor:pointer; outline:none; transition:border .2s;
+  /* ══════════════════════════════════════════════════════
+     EXPANSÃO MIRAI FINANCE — Investimentos + Relatórios
+  ══════════════════════════════════════════════════════ */
+
+  /* ── Nav 6 itens ─────────────────────────────────────── */
+  .bottom-nav { gap: 0; }
+  .bottom-nav-item {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.58rem;
+    padding: 8px 2px 6px;
+    letter-spacing: 0.1px;
   }
-  .bank-select:focus { border-color:#E31A2A; }
-  .btn-card-add {
-    display:flex; align-items:center; gap:6px;
-    padding:10px 22px; border-radius:12px; border:none;
-    background:#E31A2A; color:#fff; font-weight:700; font-size:.85rem;
-    cursor:pointer; font-family:inherit; white-space:nowrap;
-    height:42px; flex-shrink:0; transition:filter .2s, transform .1s;
+  .bottom-nav-item svg { width: 20px; height: 20px; }
+
+  /* ── Tabs internos (sub-seções) ──────────────────────── */
+  .inner-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
   }
-  .btn-card-add:hover { filter:brightness(1.12); }
-  .btn-card-add:active { transform:scale(.97); }
-  .cards-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:22px; }
-  .mirai-card {
-    position:relative; border-radius:22px; height:188px;
-    padding:22px 24px 20px; display:flex; flex-direction:column;
-    justify-content:space-between; overflow:hidden; cursor:default;
-    transition:transform .28s cubic-bezier(.22,.68,0,1.2), box-shadow .28s ease;
-    isolation:isolate;
+  .inner-tab {
+    padding: 7px 16px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border: 1px solid var(--border-light);
+    background: var(--surface2-light);
+    color: var(--muted-light);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    white-space: nowrap;
   }
-  .mirai-card:hover { transform:translateY(-5px) scale(1.01); box-shadow:0 20px 48px rgba(0,0,0,.4) !important; }
-  .mc-deco1 {
-    position:absolute; top:-55px; right:-45px; width:200px; height:200px;
-    border-radius:50%; background:rgba(255,255,255,.07); pointer-events:none; z-index:0;
+  .inner-tab.active {
+    background: #E31A2A;
+    color: #fff;
+    border-color: #E31A2A;
   }
-  .mc-deco2 {
-    position:absolute; bottom:-60px; left:-30px; width:160px; height:160px;
-    border-radius:50%; background:rgba(255,255,255,.04); pointer-events:none; z-index:0;
+  .inner-tab:hover:not(.active) {
+    border-color: #E31A2A;
+    color: #E31A2A;
   }
-  .mc-shine {
-    position:absolute; top:0; left:0; right:0; height:1px;
-    background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent); z-index:1;
+  .inner-section { display: none; }
+  .inner-section.active { display: block; }
+
+  /* ── Indicadores de mercado ───────────────────────────── */
+  .indicadores-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
   }
-  .mc-top { display:flex; justify-content:space-between; align-items:flex-start; position:relative; z-index:2; }
-  .mc-bank { font-size:1rem; font-weight:800; letter-spacing:.2px; line-height:1.2; }
-  .mc-apelido { font-size:.68rem; opacity:.65; margin-top:3px; letter-spacing:.5px; }
-  .mc-chip {
-    width:34px; height:26px; border-radius:5px;
-    border:1px solid rgba(255,255,255,.2); position:relative; overflow:hidden; flex-shrink:0;
+  .indicador-card {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
   }
-  .mc-chip::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,.1); border-radius:4px; }
-  .mc-chip::after {
-    content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-    width:16px; height:12px; border:1px solid rgba(255,255,255,.2); border-radius:2px;
+  .indicador-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--ind-color, #E31A2A);
   }
-  .mc-bottom { position:relative; z-index:2; display:flex; justify-content:space-between; align-items:flex-end; }
-  .mc-holder { font-size:.72rem; font-weight:700; letter-spacing:1.8px; text-transform:uppercase; opacity:.9; }
-  .mc-network { font-size:.6rem; letter-spacing:1px; text-transform:uppercase; opacity:.5; margin-top:3px; }
-  .mc-icon { font-size:1.5rem; opacity:.65; line-height:1; user-select:none; }
-  .mc-remove {
-    position:absolute; top:13px; right:13px; width:26px; height:26px; border-radius:50%;
-    border:1px solid rgba(255,255,255,.18); background:rgba(0,0,0,.22);
-    color:rgba(255,255,255,.75); font-size:.72rem; display:flex; align-items:center;
-    justify-content:center; cursor:pointer; transition:all .15s; z-index:3; line-height:1;
+  .ind-nome {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted-light);
+    margin-bottom: 6px;
   }
-  .mc-remove:hover { background:rgba(227,26,42,.7); border-color:transparent; color:#fff; }
-  .cards-empty { text-align:center; padding:40px 20px; color:var(--muted-light); font-size:.9rem; line-height:1.7; }
-  .cards-empty .ce-icon { font-size:2.5rem; margin-bottom:12px; display:block; }
-  @media (max-width:768px) {
-    .add-card-row { flex-direction:column; }
-    .add-card-row .form-group { min-width:unset; width:100%; }
-    .btn-card-add { width:100%; justify-content:center; }
-    .cards-grid { grid-template-columns:1fr; }
-    .mirai-card { height:168px; padding:18px 20px 16px; }
+  .ind-valor {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--text-light);
+    line-height: 1;
+  }
+  .ind-desc {
+    font-size: 0.65rem;
+    color: var(--muted-light);
+    margin-top: 4px;
+    opacity: 0.8;
+  }
+  .ind-update {
+    font-size: 0.6rem;
+    color: var(--muted-light);
+    opacity: 0.55;
+    margin-top: 6px;
+  }
+
+  /* ── KPIs de investimentos ───────────────────────────── */
+  .inv-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .inv-kpi {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .inv-kpi-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted-light);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .inv-kpi-val {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--text-light);
+  }
+  .inv-kpi-val.pos { color: #22c55e; }
+  .inv-kpi-val.neg { color: #E31A2A; }
+
+  /* ── Lista de investimentos ──────────────────────────── */
+  .inv-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .inv-item {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 16px;
+    position: relative;
+    transition: border-color 0.2s;
+  }
+  .inv-item:hover { border-color: rgba(227,26,42,0.3); }
+  .inv-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .inv-item-nome {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-light);
+    line-height: 1.2;
+  }
+  .inv-item-cat {
+    font-size: 0.65rem;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: rgba(227,26,42,0.1);
+    color: #E31A2A;
+    font-weight: 600;
+    white-space: nowrap;
+    margin-top: 4px;
+    display: inline-block;
+  }
+  .inv-item-vals {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .inv-val-block label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--muted-light);
+    display: block;
+    margin-bottom: 2px;
+  }
+  .inv-val-block span {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-light);
+  }
+  .inv-val-block span.pos { color: #22c55e; }
+  .inv-val-block span.neg { color: #E31A2A; }
+  .inv-item-del {
+    position: absolute;
+    top: 12px; right: 12px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--border-light);
+    background: var(--surface-light);
+    color: var(--muted-light);
+    font-size: 0.7rem;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .inv-item-del:hover { background: rgba(227,26,42,0.15); color: #E31A2A; border-color: #E31A2A; }
+
+  /* ── Tooltip educativo ───────────────────────────────── */
+  .edu-tip {
+    display: inline-block;
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: var(--border-light);
+    color: var(--muted-light);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 15px;
+    cursor: help;
+    vertical-align: middle;
+    margin-left: 4px;
+    position: relative;
+  }
+  .edu-tip:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #e2e8f0;
+    font-size: 0.72rem;
+    font-weight: 400;
+    padding: 8px 12px;
+    border-radius: 10px;
+    white-space: normal;
+    width: 220px;
+    line-height: 1.4;
+    z-index: 100;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    pointer-events: none;
+  }
+
+  /* ── Distribuição por categoria ──────────────────────── */
+  .cat-alloc-list { display: flex; flex-direction: column; gap: 10px; }
+  .cat-alloc-item {}
+  .cat-alloc-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    margin-bottom: 4px;
+    color: var(--text-light);
+    font-weight: 500;
+  }
+  .cat-alloc-bar-bg {
+    height: 6px;
+    background: var(--border-light);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .cat-alloc-bar { height: 100%; border-radius: 10px; transition: width 0.6s ease; }
+
+  /* ── Simuladores ─────────────────────────────────────── */
+  .sim-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .sim-card {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    padding: 20px;
+  }
+  .sim-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-light);
+    margin-bottom: 4px;
+  }
+  .sim-desc {
+    font-size: 0.72rem;
+    color: var(--muted-light);
+    margin-bottom: 14px;
+    line-height: 1.4;
+  }
+  .sim-inputs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .sim-field label { font-size: 0.65rem; color: var(--muted-light); text-transform: uppercase; letter-spacing: 0.7px; display: block; margin-bottom: 3px; font-weight: 600; }
+  .sim-field input { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border-light); background: var(--surface-light); color: var(--text-light); font-family: inherit; font-size: 0.82rem; outline: none; }
+  .sim-field input:focus { border-color: #E31A2A; }
+  .btn-simular { width: 100%; padding: 9px; border-radius: 10px; border: none; background: #E31A2A; color: #fff; font-weight: 700; font-size: 0.8rem; cursor: pointer; font-family: inherit; transition: filter 0.2s; }
+  .btn-simular:hover { filter: brightness(1.1); }
+  .sim-result { margin-top: 12px; padding: 12px; background: var(--surface-light); border: 1px solid var(--border-light); border-radius: 10px; display: none; }
+  .sim-result-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border-light); font-size: 0.78rem; }
+  .sim-result-row:last-child { border: none; font-weight: 700; }
+  .sim-result-row span:last-child { color: #22c55e; font-weight: 700; }
+
+  /* ── Centro Fiscal ───────────────────────────────────── */
+  .fiscal-resumo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .fiscal-card {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .fiscal-card label { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted-light); font-weight: 600; display: block; margin-bottom: 5px; }
+  .fiscal-card .fval { font-size: 1rem; font-weight: 800; color: var(--text-light); }
+  .checklist-ir { display: flex; flex-direction: column; gap: 8px; }
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .check-item.done { opacity: 0.6; border-color: #22c55e; }
+  .check-item.done .check-box { background: #22c55e; border-color: #22c55e; }
+  .check-box {
+    width: 20px; height: 20px;
+    border-radius: 6px;
+    border: 2px solid var(--border-light);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; color: #fff;
+  }
+  .check-text { font-size: 0.82rem; color: var(--text-light); line-height: 1.3; }
+  .check-sub { font-size: 0.68rem; color: var(--muted-light); margin-top: 2px; }
+
+  /* ── Relatórios ──────────────────────────────────────── */
+  .periodo-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .periodo-btn {
+    padding: 7px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border-light);
+    background: var(--surface2-light);
+    color: var(--muted-light);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .periodo-btn.active { background: #E31A2A; color: #fff; border-color: #E31A2A; }
+  .periodo-btn:hover:not(.active) { border-color: #E31A2A; color: #E31A2A; }
+  .periodo-custom {
+    display: none;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .periodo-custom.visible { display: flex; }
+  .periodo-custom input[type="date"] {
+    padding: 7px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-light);
+    background: var(--surface2-light);
+    color: var(--text-light);
+    font-family: inherit;
+    font-size: 0.8rem;
+    outline: none;
+  }
+  .rel-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .rel-kpi {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .rel-kpi label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted-light); font-weight: 600; display: block; margin-bottom: 5px; }
+  .rel-kpi .rkval { font-size: 1rem; font-weight: 800; color: var(--text-light); }
+  .rel-kpi .rkval.pos { color: #22c55e; }
+  .rel-kpi .rkval.neg { color: #E31A2A; }
+  .rel-executivo {
+    background: var(--surface2-light);
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 20px;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    line-height: 1.8;
+    white-space: pre-line;
+  }
+  .rel-export-btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .btn-export-rel {
+    padding: 9px 18px;
+    border-radius: 10px;
+    border: 1px solid var(--border-light);
+    background: var(--surface2-light);
+    color: var(--text-light);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-export-rel:hover { border-color: #E31A2A; color: #E31A2A; }
+
+  @media (max-width: 768px) {
+    .indicadores-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .inv-kpis { grid-template-columns: repeat(2, 1fr); }
+    .inv-form-grid { grid-template-columns: 1fr; }
+    .sim-grid { grid-template-columns: 1fr; }
+    .rel-kpis { grid-template-columns: repeat(2, 1fr); }
+    .fiscal-resumo-grid { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
 </head>
@@ -2037,6 +2394,14 @@ input:focus, select:focus, textarea:focus {
   <button class="bottom-nav-item" id="bnav-metas" onclick="switchTab('metas')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
     Metas
+  </button>
+  <button class="bottom-nav-item" id="bnav-invest" onclick="switchTab('invest')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+    Invest.
+  </button>
+  <button class="bottom-nav-item" id="bnav-relatorios" onclick="switchTab('relatorios')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    Relatórios
   </button>
   <button class="bottom-nav-item" id="bnav-perfil" onclick="switchTab('perfil')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -2220,58 +2585,22 @@ input:focus, select:focus, textarea:focus {
   <div id="view-cartoes" class="view-section">
     <div class="panel">
       <div class="panel-title"><i data-lucide="credit-card" class="w-4 h-4"></i> Meus Cartões</div>
-      <div class="add-card-row">
-        <div class="form-group" style="flex:2;min-width:220px;">
-          <label>Banco ou cartão</label>
-          <select id="novo-cartao-banco" class="bank-select">
-            <option value="">— Selecione uma instituição —</option>
-            <optgroup label="Fintechs">
-              <option value="nubank">Nubank</option><option value="inter">Inter</option>
-              <option value="c6bank">C6 Bank</option><option value="neon">Neon</option>
-              <option value="picpay">PicPay</option><option value="pagbank">PagBank</option>
-              <option value="next">Next</option><option value="willbank">Will Bank</option>
-              <option value="pan">Banco Pan</option><option value="recargapay">RecargaPay</option>
-              <option value="ame">Ame Digital</option><option value="stone">Stone</option>
-              <option value="infinitepay">InfinitePay</option>
-            </optgroup>
-            <optgroup label="Bancos tradicionais">
-              <option value="bb">Banco do Brasil</option><option value="caixa">Caixa Econômica</option>
-              <option value="bradesco">Bradesco</option><option value="santander">Santander</option>
-              <option value="itau">Itaú</option><option value="btg">BTG Pactual</option>
-              <option value="xp">XP Investimentos</option><option value="original">Banco Original</option>
-              <option value="safra">Banco Safra</option><option value="bv">Banco BV</option>
-              <option value="banrisul">Banrisul</option><option value="brb">BRB</option>
-            </optgroup>
-            <optgroup label="Cooperativas">
-              <option value="sicoob">Sicoob</option><option value="sicredi">Sicredi</option>
-              <option value="cresol">Cresol</option><option value="unicred">Unicred</option>
-            </optgroup>
-            <optgroup label="Internacional / Global">
-              <option value="nomad">Nomad</option><option value="wise">Wise</option>
-              <option value="mercadopago">Mercado Pago</option><option value="avenue">Avenue</option>
-            </optgroup>
-            <optgroup label="Bandeiras">
-              <option value="visa">Visa</option><option value="mastercard">Mastercard</option>
-              <option value="elo">Elo</option><option value="amex">American Express</option>
-              <option value="hipercard">Hipercard</option><option value="diners">Diners Club</option>
-            </optgroup>
-            <optgroup label="Outros">
-              <option value="outro">Outro banco / cartão</option>
-            </optgroup>
-          </select>
-        </div>
-        <div class="form-group" style="flex:2;min-width:180px;">
-          <label>Apelido <span style="font-weight:400;opacity:.6;">(opcional)</span></label>
-          <input type="text" id="novo-cartao-apelido" placeholder="Ex: Nubank Principal, Inter Débito…" maxlength="40">
-        </div>
-        <button class="btn-card-add" onclick="adicionarCartao()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Adicionar
-        </button>
+      <div class="add-card-form">
+        <div class="form-group"><label>Nome</label><input type="text" id="novo-cartao-nome" placeholder="Ex: Nubank"></div>
+        <div class="form-group"><label>Bandeira</label><select id="novo-cartao-bandeira">
+          <option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="elo">Elo</option>
+          <option value="amex">American Express</option><option value="hipercard">Hipercard</option><option value="diners">Diners</option>
+          <option value="nubank">Nubank</option><option value="sicoob">Sicoob</option><option value="nomad">Nomad</option>
+          <option value="mercadopago">MercadoPago</option><option value="infinite">InfinitePay</option><option value="default">Outro</option>
+        </select></div>
+        <div class="form-group"><label>Titular</label><input type="text" id="novo-cartao-titular" placeholder="Nome no cartão"></div>
+        <div class="form-group"><label>Número</label><input type="text" id="novo-cartao-numero" placeholder="**** **** **** 1234"></div>
+        <div class="form-group"><label>Cor</label><input type="color" id="novo-cartao-cor" value="#2c3e50"></div>
+        <div class="form-group"><label>Limite</label><input type="number" id="novo-cartao-limite" placeholder="R$" step="0.01"></div>
+        <button class="btn-add-card" onclick="adicionarCartao()">Adicionar Cartão</button>
       </div>
-      <div id="cards-container" class="cards-grid"></div>
+      <div id="cards-container" class="cards-list"></div>
     </div>
-
     <div class="panel">
       <div class="panel-title"><i data-lucide="shopping-cart" class="w-4 h-4"></i> Nova Compra</div>
       <div class="form-grid">
@@ -2279,27 +2608,18 @@ input:focus, select:focus, textarea:focus {
         <div class="form-group"><label>Data</label><input type="date" id="compra-data"></div>
         <div class="form-group"><label>Descrição</label><input type="text" id="compra-desc"></div>
         <div class="form-group"><label>Valor (R$)</label><input type="number" id="compra-valor" step="0.01"></div>
-        <div class="form-group"><label>Categoria</label><select id="compra-cat">
-          <option>Alimentação</option><option>Lazer</option><option>Transporte</option>
-          <option>Saúde</option><option>Educação</option><option>Moradia</option><option>Outros</option>
-        </select></div>
-        <div class="form-group"><label>Parcelas</label>
-          <div style="display:flex;gap:8px;">
-            <input type="number" id="compra-parcelas-total" placeholder="Total" min="1" style="width:70px">
-            <input type="number" id="compra-parcelas-atual" placeholder="Atual" min="1" style="width:70px">
-          </div>
-        </div>
+        <div class="form-group"><label>Categoria</label><select id="compra-cat"><option>Alimentação</option><option>Lazer</option><option>Transporte</option><option>Saúde</option><option>Educação</option><option>Moradia</option><option>Outros</option></select></div>
+        <div class="form-group"><label>Parcelas</label><div style="display:flex;gap:8px;"><input type="number" id="compra-parcelas-total" placeholder="Total" min="1" style="width:70px"><input type="number" id="compra-parcelas-atual" placeholder="Atual" min="1" style="width:70px"></div></div>
       </div>
       <button class="btn-add" onclick="adicionarCompra()">Registrar Compra</button>
     </div>
-
     <div class="panel compras-por-cartao">
       <div class="panel-title"><i data-lucide="file-text" class="w-4 h-4"></i> Compras do Mês</div>
       <div id="compras-container"></div>
     </div>
   </div>
 
-<!-- ABA METAS -->
+  <!-- ABA METAS -->
   <div id="view-metas" class="view-section">
     <div class="metas-grid">
       <!-- Meta de economia -->
@@ -2401,6 +2721,301 @@ input:focus, select:focus, textarea:focus {
         </div>
         <div class="miraix-analise" id="miraix-analise"></div>
         <button class="btn-add" onclick="miraixAplicar()" style="margin-top:0;">✓ Aplicar esta meta no sistema</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ABA INVESTIMENTOS -->
+  <div id="view-invest" class="view-section">
+
+    <!-- Sub-navegação interna -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+      <button class="inner-tab active" id="itab-portfolio" onclick="switchInnerTab('portfolio')">📊 Portfólio</button>
+      <button class="inner-tab" id="itab-simuladores" onclick="switchInnerTab('simuladores')">🧮 Simuladores</button>
+      <button class="inner-tab" id="itab-fiscal" onclick="switchInnerTab('fiscal')">📋 Centro Fiscal</button>
+    </div>
+
+    <!-- ── PORTFÓLIO ── -->
+    <div class="inner-section active" id="isec-portfolio">
+
+      <!-- Indicadores de mercado -->
+      <div class="panel">
+        <div class="panel-title" style="justify-content:space-between;">
+          <span><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Indicadores de Referência</span>
+          <span id="ind-update" style="font-size:0.62rem;opacity:0.5;font-weight:400;"></span>
+        </div>
+        <div class="indicadores-grid" id="indicadores-grid">
+          <div class="indicador-card" style="--ind-color:#22c55e;">
+            <div class="ind-nome">Selic / CDI</div>
+            <div class="ind-valor" id="ind-selic">—</div>
+            <div class="ind-desc">Taxa básica de juros</div>
+          </div>
+          <div class="indicador-card" style="--ind-color:#f59e0b;">
+            <div class="ind-nome">IPCA</div>
+            <div class="ind-valor" id="ind-ipca">—</div>
+            <div class="ind-desc">Inflação oficial</div>
+          </div>
+          <div class="indicador-card" style="--ind-color:#3b82f6;">
+            <div class="ind-nome">Dólar</div>
+            <div class="ind-valor" id="ind-dolar">—</div>
+            <div class="ind-desc">USD/BRL referência</div>
+          </div>
+          <div class="indicador-card" style="--ind-color:#8b5cf6;">
+            <div class="ind-nome">Ibovespa</div>
+            <div class="ind-valor" id="ind-ibov">—</div>
+            <div class="ind-desc">Índice da B3</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs de investimentos -->
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="trending-up" class="w-4 h-4"></i> Visão Geral</div>
+        <div class="inv-kpis" id="inv-kpis">
+          <div class="inv-kpi"><div class="inv-kpi-label">Total investido</div><div class="inv-kpi-val" id="ikpi-aportado">R$ 0,00</div></div>
+          <div class="inv-kpi"><div class="inv-kpi-label">Valor atual</div><div class="inv-kpi-val" id="ikpi-atual">R$ 0,00</div></div>
+          <div class="inv-kpi"><div class="inv-kpi-label">Rendimento</div><div class="inv-kpi-val" id="ikpi-rendimento">R$ 0,00</div></div>
+          <div class="inv-kpi"><div class="inv-kpi-label">Rentabilidade</div><div class="inv-kpi-val" id="ikpi-pct">0,00%</div></div>
+        </div>
+
+        <!-- Distribuição por categoria -->
+        <div id="inv-alloc-container" style="margin-bottom:16px;"></div>
+        <canvas id="chart-inv-alloc" height="180" style="display:none;"></canvas>
+      </div>
+
+      <!-- Adicionar investimento -->
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="plus-circle" class="w-4 h-4"></i> Registrar Investimento</div>
+        <div class="inv-form-grid">
+          <div class="form-group">
+            <label>Nome
+              <span class="edu-tip" data-tip="Identifique o investimento como preferir. Ex: CDB Nubank, Tesouro Selic 2028, Ações ITSA4…">?</span>
+            </label>
+            <input type="text" id="inv-nome" placeholder="Ex: Tesouro Selic 2028">
+          </div>
+          <div class="form-group">
+            <label>Categoria
+              <span class="edu-tip" data-tip="Reserva de emergência: liquidez imediata. CDB: renda fixa bancária. Tesouro Selic: segurança + liquidez. IPCA+: proteção contra inflação. Prefixado: taxa travada. Ações/FIIs: renda variável.">?</span>
+            </label>
+            <select id="inv-cat">
+              <option value="Reserva de emergência">Reserva de emergência</option>
+              <option value="CDB / Renda fixa">CDB / Renda fixa</option>
+              <option value="Tesouro Selic">Tesouro Selic</option>
+              <option value="Tesouro IPCA+">Tesouro IPCA+</option>
+              <option value="Prefixado">Prefixado</option>
+              <option value="Fundos">Fundos</option>
+              <option value="Ações">Ações</option>
+              <option value="FIIs">FIIs</option>
+              <option value="Cripto">Cripto</option>
+              <option value="Outros">Outros</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Instituição <span style="font-weight:400;opacity:.6;">(opcional)</span></label>
+            <input type="text" id="inv-inst" placeholder="Ex: Nubank, XP, Rico…">
+          </div>
+          <div class="form-group">
+            <label>Data de início</label>
+            <input type="date" id="inv-data">
+          </div>
+          <div class="form-group">
+            <label>Valor investido (R$)</label>
+            <input type="number" id="inv-aportado" step="0.01" placeholder="0,00">
+          </div>
+          <div class="form-group">
+            <label>Valor atual (R$)
+              <span class="edu-tip" data-tip="Quanto vale hoje esse investimento. Se ainda não atualizou, coloque o mesmo valor do aporte inicial.">?</span>
+            </label>
+            <input type="number" id="inv-atual" step="0.01" placeholder="0,00">
+          </div>
+          <div class="form-group">
+            <label>Aporte mensal (R$) <span style="font-weight:400;opacity:.6;">(opcional)</span></label>
+            <input type="number" id="inv-mensal" step="0.01" placeholder="0,00">
+          </div>
+          <div class="form-group">
+            <label>Observações <span style="font-weight:400;opacity:.6;">(opcional)</span></label>
+            <input type="text" id="inv-obs" placeholder="Ex: taxa 12% a.a., vence 2026…">
+          </div>
+        </div>
+        <button class="btn-add" onclick="adicionarInvestimento()">Registrar investimento</button>
+      </div>
+
+      <!-- Lista de investimentos -->
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="layers" class="w-4 h-4"></i> Minha Carteira</div>
+        <div id="inv-lista-container">
+          <div class="empty-state"><span class="emoji">📊</span>Nenhum investimento registrado ainda.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SIMULADORES ── -->
+    <div class="inner-section" id="isec-simuladores">
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="calculator" class="w-4 h-4"></i> Simuladores de Referência</div>
+        <p style="font-size:.8rem;color:var(--muted-light);margin-bottom:20px;">Simulações educativas baseadas em taxas de referência. Não representam rendimentos garantidos.</p>
+        <div class="sim-grid">
+
+          <!-- CDB % CDI -->
+          <div class="sim-card">
+            <div class="sim-title">CDB em % do CDI</div>
+            <div class="sim-desc">Simula quanto rende um CDB que paga X% do CDI. Comum em fintechs como Nubank, Inter, PagBank.</div>
+            <div class="sim-inputs">
+              <div class="sim-field"><label>Valor inicial (R$)</label><input type="number" id="sim-cdb-val" placeholder="1000"></div>
+              <div class="sim-field"><label>% do CDI</label><input type="number" id="sim-cdb-pct" placeholder="100" min="1" max="200"></div>
+              <div class="sim-field"><label>Prazo (meses)</label><input type="number" id="sim-cdb-meses" placeholder="12" min="1"></div>
+            </div>
+            <button class="btn-simular" onclick="simularCDB()">Simular</button>
+            <div class="sim-result" id="sim-cdb-result"></div>
+          </div>
+
+          <!-- Tesouro Selic -->
+          <div class="sim-card">
+            <div class="sim-title">Tesouro Selic</div>
+            <div class="sim-desc">Investimento mais seguro do Brasil. Acompanha a taxa Selic. Ideal para reserva de emergência.</div>
+            <div class="sim-inputs">
+              <div class="sim-field"><label>Valor inicial (R$)</label><input type="number" id="sim-selic-val" placeholder="1000"></div>
+              <div class="sim-field"><label>Prazo (meses)</label><input type="number" id="sim-selic-meses" placeholder="12" min="1"></div>
+            </div>
+            <button class="btn-simular" onclick="simularSelic()">Simular</button>
+            <div class="sim-result" id="sim-selic-result"></div>
+          </div>
+
+          <!-- IPCA+ -->
+          <div class="sim-card">
+            <div class="sim-title">Tesouro IPCA+</div>
+            <div class="sim-desc">Protege contra a inflação + uma taxa prefixada. Indicado para objetivos de médio e longo prazo.</div>
+            <div class="sim-inputs">
+              <div class="sim-field"><label>Valor inicial (R$)</label><input type="number" id="sim-ipca-val" placeholder="1000"></div>
+              <div class="sim-field"><label>Taxa real (% a.a.)</label><input type="number" id="sim-ipca-taxa" placeholder="6.0" step="0.1"></div>
+              <div class="sim-field"><label>Prazo (meses)</label><input type="number" id="sim-ipca-meses" placeholder="24" min="1"></div>
+            </div>
+            <button class="btn-simular" onclick="simularIPCA()">Simular</button>
+            <div class="sim-result" id="sim-ipca-result"></div>
+          </div>
+
+          <!-- Prefixado -->
+          <div class="sim-card">
+            <div class="sim-title">Prefixado</div>
+            <div class="sim-desc">Taxa travada desde a contratação. Você sabe exatamente quanto vai receber no vencimento.</div>
+            <div class="sim-inputs">
+              <div class="sim-field"><label>Valor inicial (R$)</label><input type="number" id="sim-pre-val" placeholder="1000"></div>
+              <div class="sim-field"><label>Taxa (% a.a.)</label><input type="number" id="sim-pre-taxa" placeholder="12.0" step="0.1"></div>
+              <div class="sim-field"><label>Prazo (meses)</label><input type="number" id="sim-pre-meses" placeholder="12" min="1"></div>
+            </div>
+            <button class="btn-simular" onclick="simularPrefixado()">Simular</button>
+            <div class="sim-result" id="sim-pre-result"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CENTRO FISCAL ── -->
+    <div class="inner-section" id="isec-fiscal">
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="file-check" class="w-4 h-4"></i> Centro Fiscal / IR</div>
+        <p style="font-size:.8rem;color:var(--muted-light);margin-bottom:20px;line-height:1.5;">Organizador para apoiar sua declaração de Imposto de Renda. <strong>Não é uma calculadora tributária definitiva</strong> — consulte sempre um contador para sua declaração oficial.</p>
+
+        <!-- Seletor de ano fiscal -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+          <label style="font-size:.78rem;font-weight:600;color:var(--muted-light);">Ano fiscal:</label>
+          <select id="fiscal-ano" onchange="renderFiscal()" style="padding:7px 12px;border-radius:10px;border:1px solid var(--border-light);background:var(--surface2-light);color:var(--text-light);font-family:inherit;font-size:.82rem;">
+          </select>
+        </div>
+
+        <!-- Resumo anual -->
+        <div class="panel-title" style="margin-bottom:12px;font-size:.8rem;"><i data-lucide="calendar" class="w-4 h-4"></i> Resumo do Ano</div>
+        <div class="fiscal-resumo-grid" id="fiscal-resumo-grid">
+          <div class="fiscal-card"><label>Total recebido</label><div class="fval" id="fk-recebido">—</div></div>
+          <div class="fiscal-card"><label>Total gasto</label><div class="fval" id="fk-gasto">—</div></div>
+          <div class="fiscal-card"><label>Total investido</label><div class="fval" id="fk-investido">—</div></div>
+          <div class="fiscal-card"><label>Rendimentos</label><div class="fval" id="fk-rendimentos">—</div></div>
+          <div class="fiscal-card"><label>Saldo do ano</label><div class="fval" id="fk-saldo">—</div></div>
+          <div class="fiscal-card"><label>Posição patrimonial</label><div class="fval" id="fk-patrimonio">—</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="check-square" class="w-4 h-4"></i> Checklist para Declaração</div>
+        <p style="font-size:.75rem;color:var(--muted-light);margin-bottom:14px;">Marque o que já está organizado para facilitar sua declaração.</p>
+        <div class="checklist-ir" id="checklist-ir">
+          <!-- gerado por JS -->
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title"><i data-lucide="link" class="w-4 h-4"></i> Links Úteis</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <a href="https://www.gov.br/receitafederal/pt-br" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2-light);border:1px solid var(--border-light);border-radius:12px;text-decoration:none;color:var(--text-light);font-size:.82rem;transition:border-color .15s;" onmouseover="this.style.borderColor='#E31A2A'" onmouseout="this.style.borderColor=''">
+            🏛️ <div><div style="font-weight:600;">Receita Federal</div><div style="font-size:.7rem;opacity:.6;">gov.br — declaração oficial do IR</div></div>
+          </a>
+          <a href="https://www.tesouro.fazenda.gov.br/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2-light);border:1px solid var(--border-light);border-radius:12px;text-decoration:none;color:var(--text-light);font-size:.82rem;transition:border-color .15s;" onmouseover="this.style.borderColor='#E31A2A'" onmouseout="this.style.borderColor=''">
+            📊 <div><div style="font-weight:600;">Tesouro Direto</div><div style="font-size:.7rem;opacity:.6;">Extrato e informes de rendimentos</div></div>
+          </a>
+          <a href="https://www.b3.com.br/pt_br/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2-light);border:1px solid var(--border-light);border-radius:12px;text-decoration:none;color:var(--text-light);font-size:.82rem;transition:border-color .15s;" onmouseover="this.style.borderColor='#E31A2A'" onmouseout="this.style.borderColor=''">
+            📈 <div><div style="font-weight:600;">B3</div><div style="font-size:.7rem;opacity:.6;">Bolsa de Valores — informes de rendimentos</div></div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABA RELATÓRIOS -->
+  <div id="view-relatorios" class="view-section">
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="bar-chart" class="w-4 h-4"></i> Relatório Financeiro</div>
+
+      <!-- Seletor de período -->
+      <div class="periodo-grid">
+        <button class="periodo-btn active" id="pb-mes" onclick="setPeriodo('mes')">Este mês</button>
+        <button class="periodo-btn" id="pb-30" onclick="setPeriodo('30')">30 dias</button>
+        <button class="periodo-btn" id="pb-90" onclick="setPeriodo('90')">90 dias</button>
+        <button class="periodo-btn" id="pb-ano" onclick="setPeriodo('ano')">Este ano</button>
+        <button class="periodo-btn" id="pb-custom" onclick="setPeriodo('custom')">Personalizado</button>
+      </div>
+      <div class="periodo-custom" id="periodo-custom-wrap">
+        <input type="date" id="rel-data-ini">
+        <span style="font-size:.78rem;color:var(--muted-light);">até</span>
+        <input type="date" id="rel-data-fim">
+        <button class="btn-card-add" onclick="renderRelatorios()" style="height:36px;padding:0 14px;font-size:.78rem;">Aplicar</button>
+      </div>
+
+      <!-- KPIs do período -->
+      <div class="rel-kpis" id="rel-kpis">
+        <div class="rel-kpi"><label>Recebido</label><div class="rkval pos" id="rk-recebido">—</div></div>
+        <div class="rel-kpi"><label>Gasto</label><div class="rkval neg" id="rk-gasto">—</div></div>
+        <div class="rel-kpi"><label>Saldo</label><div class="rkval" id="rk-saldo">—</div></div>
+        <div class="rel-kpi"><label>Investido</label><div class="rkval" id="rk-investido">—</div></div>
+        <div class="rel-kpi"><label>Compras cartão</label><div class="rkval" id="rk-cartao">—</div></div>
+        <div class="rel-kpi"><label>Mensalidades</label><div class="rkval" id="rk-mensalidades">—</div></div>
+      </div>
+    </div>
+
+    <!-- Gráficos do período -->
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="pie-chart" class="w-4 h-4"></i> Gastos por Categoria</div>
+      <canvas id="chart-rel-cat" height="200"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="trending-up" class="w-4 h-4"></i> Receitas × Despesas por Mês</div>
+      <canvas id="chart-rel-fluxo" height="200"></canvas>
+    </div>
+
+    <!-- Relatório executivo -->
+    <div class="panel">
+      <div class="panel-title"><i data-lucide="file-text" class="w-4 h-4"></i> Resumo Executivo</div>
+      <div class="rel-executivo" id="rel-executivo">Selecione um período para gerar o relatório.</div>
+      <div class="rel-export-btns">
+        <button class="btn-export-rel" onclick="exportarRelatorioCSV()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exportar CSV
+        </button>
+        <button class="btn-export-rel" onclick="window.print()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Imprimir
+        </button>
       </div>
     </div>
   </div>
@@ -3077,274 +3692,283 @@ function importarJSON(input) {
 document.getElementById('tx-data').value = new Date().toISOString().split('T')[0];
 updateMonthLabel();
 
-// ══════════════════════════════════════════════════════════════════
-// MIRAI FINANCE — MÓDULO CARTÕES  (compatível com dados antigos e novos)
-// ══════════════════════════════════════════════════════════════════
-
-// ── TEMAS VISUAIS ──────────────────────────────────────────────────────────
-const CARD_THEMES = {
-  nubank:     { bg:'linear-gradient(135deg,#7B2FBE 0%,#420E83 60%,#2B0A56 100%)', text:'#fff', network:'Mastercard', icon:'✦' },
-  inter:      { bg:'linear-gradient(135deg,#FF6B00 0%,#E05500 55%,#B03E00 100%)', text:'#fff', network:'Mastercard', icon:'◆' },
-  c6bank:     { bg:'linear-gradient(135deg,#2D2D2D 0%,#1A1A1A 50%,#0D0D0D 100%)', text:'#E8D5B0', network:'Mastercard', icon:'◎' },
-  neon:       { bg:'linear-gradient(135deg,#00C4E8 0%,#0080B8 55%,#004E87 100%)', text:'#fff', network:'Visa', icon:'⬡' },
-  picpay:     { bg:'linear-gradient(135deg,#11C76F 0%,#0A9A54 55%,#076B3A 100%)', text:'#fff', network:'Visa', icon:'◉' },
-  pagbank:    { bg:'linear-gradient(135deg,#04A54A 0%,#027A36 55%,#015225 100%)', text:'#fff', network:'Mastercard', icon:'◈' },
-  next:       { bg:'linear-gradient(135deg,#00FF7F 0%,#00CC60 40%,#009944 100%)', text:'#003820', network:'Visa', icon:'▶' },
-  willbank:   { bg:'linear-gradient(135deg,#FFD600 0%,#F0C000 45%,#C89800 100%)', text:'#1A1200', network:'Mastercard', icon:'◇' },
-  pan:        { bg:'linear-gradient(135deg,#004FAA 0%,#003480 55%,#001E55 100%)', text:'#fff', network:'Mastercard', icon:'◫' },
-  recargapay: { bg:'linear-gradient(135deg,#7B2D8B 0%,#551E63 55%,#33103C 100%)', text:'#fff', network:'Visa', icon:'⟁' },
-  ame:        { bg:'linear-gradient(135deg,#E50019 0%,#B50012 55%,#7D000C 100%)', text:'#fff', network:'Visa', icon:'◎' },
-  stone:      { bg:'linear-gradient(135deg,#00B978 0%,#009060 50%,#006844 100%)', text:'#fff', network:'Mastercard', icon:'◆' },
-  infinitepay:{ bg:'linear-gradient(135deg,#FF5200 0%,#D43E00 50%,#9E2D00 100%)', text:'#fff', network:'Mastercard', icon:'∞' },
-  infinite:   { bg:'linear-gradient(135deg,#FF5200 0%,#D43E00 50%,#9E2D00 100%)', text:'#fff', network:'Mastercard', icon:'∞' }, // alias antigo
-  bb:         { bg:'linear-gradient(135deg,#F0CB00 0%,#1C60A8 50%,#0D3D73 100%)', text:'#fff', network:'Visa', icon:'◈' },
-  caixa:      { bg:'linear-gradient(135deg,#0068B3 0%,#004E8A 45%,#EF7D00 100%)', text:'#fff', network:'Visa', icon:'◧' },
-  bradesco:   { bg:'linear-gradient(135deg,#CC0022 0%,#9E0018 55%,#6B0010 100%)', text:'#fff', network:'Visa', icon:'◉' },
-  santander:  { bg:'linear-gradient(135deg,#EC0000 0%,#CC0000 45%,#900000 100%)', text:'#fff', network:'Mastercard', icon:'◎' },
-  itau:       { bg:'linear-gradient(135deg,#F58220 0%,#D96A00 35%,#003087 100%)', text:'#fff', network:'Visa', icon:'◆' },
-  btg:        { bg:'linear-gradient(135deg,#004990 0%,#003068 50%,#001A3D 100%)', text:'#C8B97A', network:'Mastercard', icon:'◎' },
-  xp:         { bg:'linear-gradient(135deg,#1F1F1F 0%,#111 50%,#000 100%)', text:'#C8A84B', network:'Visa', icon:'◇' },
-  original:   { bg:'linear-gradient(135deg,#00985F 0%,#007548 50%,#004F30 100%)', text:'#fff', network:'Mastercard', icon:'◈' },
-  safra:      { bg:'linear-gradient(135deg,#00347A 0%,#001E50 55%,#000D28 100%)', text:'#fff', network:'Visa', icon:'◉' },
-  bv:         { bg:'linear-gradient(135deg,#0070CC 0%,#0050A0 50%,#003070 100%)', text:'#fff', network:'Mastercard', icon:'◫' },
-  banrisul:   { bg:'linear-gradient(135deg,#D4001A 0%,#A80014 50%,#70000D 100%)', text:'#fff', network:'Mastercard', icon:'◎' },
-  brb:        { bg:'linear-gradient(135deg,#0060AA 0%,#004484 50%,#002A55 100%)', text:'#fff', network:'Visa', icon:'◆' },
-  sicoob:     { bg:'linear-gradient(135deg,#008060 0%,#006048 50%,#003D2E 100%)', text:'#fff', network:'Visa', icon:'◉' },
-  sicredi:    { bg:'linear-gradient(135deg,#009B3A 0%,#007A2C 50%,#00521E 100%)', text:'#fff', network:'Mastercard', icon:'◈' },
-  cresol:     { bg:'linear-gradient(135deg,#0075C4 0%,#0055A0 50%,#003472 100%)', text:'#fff', network:'Visa', icon:'◧' },
-  unicred:    { bg:'linear-gradient(135deg,#0042A0 0%,#002C78 50%,#001848 100%)', text:'#fff', network:'Mastercard', icon:'◉' },
-  nomad:      { bg:'linear-gradient(135deg,#18122B 0%,#100C1E 50%,#080610 100%)', text:'#D4AF37', network:'Visa', icon:'✦' },
-  wise:       { bg:'linear-gradient(135deg,#9DE25D 0%,#7AC040 50%,#52922A 100%)', text:'#1A3300', network:'Mastercard', icon:'◎' },
-  mercadopago:{ bg:'linear-gradient(135deg,#009EE3 0%,#007FBF 50%,#00558A 100%)', text:'#fff', network:'Mastercard', icon:'◆' },
-  avenue:     { bg:'linear-gradient(135deg,#0A3E6E 0%,#062847 50%,#020F1C 100%)', text:'#8BA8CC', network:'Visa', icon:'◇' },
-  visa:       { bg:'linear-gradient(135deg,#1A1F71 0%,#0F1350 50%,#060828 100%)', text:'#fff', network:'Visa', icon:'◈' },
-  mastercard: { bg:'linear-gradient(135deg,#2B2B2B 0%,#1A1A1A 50%,#0A0A0A 100%)', text:'#fff', network:'Mastercard', icon:'◎' },
-  elo:        { bg:'linear-gradient(135deg,#FFD700 0%,#1A1A1A 50%,#FF6B00 100%)', text:'#fff', network:'Elo', icon:'◉' },
-  amex:       { bg:'linear-gradient(135deg,#2E77BC 0%,#1A5A9A 50%,#0C3D73 100%)', text:'#fff', network:'Amex', icon:'◆' },
-  hipercard:  { bg:'linear-gradient(135deg,#B4002E 0%,#8A0022 50%,#5E0016 100%)', text:'#fff', network:'Hipercard', icon:'◫' },
-  diners:     { bg:'linear-gradient(135deg,#004B99 0%,#003070 50%,#001540 100%)', text:'#fff', network:'Diners', icon:'◇' },
-  default:    { bg:'linear-gradient(135deg,#2A3542 0%,#1A2430 50%,#0D1520 100%)', text:'#C8D8E8', network:'Cartão', icon:'◈' },
-  outro:      { bg:'linear-gradient(135deg,#2A3542 0%,#1A2430 50%,#0D1520 100%)', text:'#C8D8E8', network:'Cartão', icon:'◈' },
-};
-
-const CARD_LABELS = {
-  nubank:'Nubank', inter:'Inter', c6bank:'C6 Bank', neon:'Neon',
-  picpay:'PicPay', pagbank:'PagBank', next:'Next', willbank:'Will Bank',
-  pan:'Banco Pan', recargapay:'RecargaPay', ame:'Ame Digital', stone:'Stone',
-  infinitepay:'InfinitePay', infinite:'InfinitePay',
-  bb:'Banco do Brasil', caixa:'Caixa Econômica', bradesco:'Bradesco',
-  santander:'Santander', itau:'Itaú', btg:'BTG Pactual', xp:'XP Investimentos',
-  original:'Banco Original', safra:'Banco Safra', bv:'Banco BV',
-  banrisul:'Banrisul', brb:'BRB', sicoob:'Sicoob', sicredi:'Sicredi',
-  cresol:'Cresol', unicred:'Unicred', nomad:'Nomad', wise:'Wise',
-  mercadopago:'Mercado Pago', avenue:'Avenue', visa:'Visa',
-  mastercard:'Mastercard', elo:'Elo', amex:'American Express',
-  hipercard:'Hipercard', diners:'Diners Club', default:'Cartão', outro:'Outro Banco',
-};
-
-// ── CHAVE DE TEMA: resolve tanto novo (banco) quanto antigo (bandeira) ─────
-function resolveThemeKey(c) {
-  // Novo formato: c.banco ("nubank", "sicoob", etc.)
-  if (c.banco && CARD_THEMES[c.banco]) return c.banco;
-  // Antigo formato: c.bandeira (mesmo mapeamento de slugs)
-  if (c.bandeira && CARD_THEMES[c.bandeira]) return c.bandeira;
-  // Tenta inferir pelo nome do cartão
-  if (c.nome) {
-    const n = c.nome.toLowerCase();
-    for (const key of Object.keys(CARD_THEMES)) {
-      if (n.includes(key) || (CARD_LABELS[key] && n.includes(CARD_LABELS[key].toLowerCase()))) return key;
-    }
-  }
-  return 'outro';
+// ===================== MÓDULO CARTÕES =====================
+function getCartoes() { return window._cartoes || []; }
+function salvarCartoes(c) {
+  window._cartoes = c;
+  _tabRendered.cartoes = false; // força re-render na próxima visita
+  window._salvarCartoesFirebase && window._salvarCartoesFirebase(c);
 }
-
-// ── NOME DE EXIBIÇÃO: resolve novo e antigo ─────────────────────────────────
-function resolveCardLabel(c) {
-  if (c.apelido) return c.apelido;
-  if (c.banco) return CARD_LABELS[c.banco] || c.nome || 'Cartão';
-  return c.nome || CARD_LABELS[c.bandeira] || 'Cartão';
+function getCompras() { return window._compras || []; }
+function salvarCompras(c) {
+  window._compras = c;
+  window._salvarComprasFirebase && window._salvarComprasFirebase(c);
 }
-
-// ── STORAGE ─────────────────────────────────────────────────────────────────
-function getCartoes()    { return window._cartoes || []; }
-function salvarCartoes(c){ window._cartoes=c; _tabRendered.cartoes=false; window._salvarCartoesFirebase&&window._salvarCartoesFirebase(c); }
-function getCompras()    { return window._compras || []; }
-function salvarCompras(c){ window._compras=c; window._salvarComprasFirebase&&window._salvarComprasFirebase(c); }
-
-// ── PARCELAS ─────────────────────────────────────────────────────────────────
+// Retorna as parcelas que devem aparecer no mês (ano, mês)
 function getInstallmentTransactionsForMonth(year, month) {
+  const compras = getCompras();
   const result = [];
-  getCompras().forEach(compra => {
+  compras.forEach(compra => {
     if (compra.parcelasTotal <= 1) return;
-    const dc = new Date(compra.data);
-    let diff = (year-dc.getFullYear())*12 + (month-dc.getMonth());
-    if (diff < 0) return;
-    const num = diff + 1;
-    if (num > compra.parcelasTotal) return;
-    const val = Math.round((compra.valor/compra.parcelasTotal)*100)/100;
-    let d = new Date(dc); d.setFullYear(year); d.setMonth(month);
-    if (d.getDate()!==dc.getDate()) d.setDate(0);
-    result.push({ id:`parcela_${compra.id}_${num}`, desc:`${compra.desc} (${num}/${compra.parcelasTotal})`,
-      valor:val, cat:compra.categoria, data:d.toISOString().split('T')[0],
-      tipo:'despesa', isGenerated:true, origemId:compra.id });
+    const dataCompra = new Date(compra.data);
+    let diffMeses = (year - dataCompra.getFullYear()) * 12 + (month - dataCompra.getMonth());
+    if (diffMeses < 0) return;
+    const numeroParcela = diffMeses + 1;
+    if (numeroParcela > compra.parcelasTotal) return;
+    // Valor da parcela = total / quantidade de parcelas
+    const valorParcela = Math.round((compra.valor / compra.parcelasTotal) * 100) / 100;
+    let dataParcela = new Date(dataCompra);
+    dataParcela.setFullYear(year);
+    dataParcela.setMonth(month);
+    if (dataParcela.getDate() !== dataCompra.getDate()) dataParcela.setDate(0);
+    const dataFormatada = dataParcela.toISOString().split('T')[0];
+    result.push({
+      id: `parcela_${compra.id}_${numeroParcela}`,
+      desc: `${compra.desc} (${numeroParcela}/${compra.parcelasTotal})`,
+      valor: valorParcela,
+      cat: compra.categoria,
+      data: dataFormatada,
+      tipo: 'despesa',
+      isGenerated: true,
+      origemId: compra.id
+    });
   });
   return result;
 }
-
-// ── ASSINATURAS ──────────────────────────────────────────────────────────────
+// Retorna as transações geradas pelas assinaturas mensais
 function getSubscriptionTransactionsForMonth(year, month) {
+  const subscriptions = carregarMensalidades();
   const result = [];
-  carregarMensalidades().forEach(sub => {
-    let d = new Date(year, month, sub.dia||1);
-    if (d.getMonth()!==month) d = new Date(year, month+1, 0);
-    result.push({ id:`subsc_${sub.id}_${year}_${month}`, desc:sub.nome, valor:sub.val,
-      cat:'Assinaturas/Mensalidades', data:d.toISOString().split('T')[0],
-      tipo:'despesa', isGenerated:true, origemId:sub.id });
+  const mesAtual = month;      // 0-index
+  const anoAtual = year;
+
+  subscriptions.forEach(sub => {
+    // Define o dia do vencimento: se não tiver, usa 1
+    let dia = sub.dia ? sub.dia : 1;
+    // Garante que o dia exista no mês
+    let dataValida = new Date(anoAtual, mesAtual, dia);
+    if (dataValida.getMonth() !== mesAtual) {
+      // Se o dia não existe (ex: 31 em fevereiro), ajusta para o último dia do mês
+      dataValida = new Date(anoAtual, mesAtual + 1, 0);
+    }
+    const dataFormatada = dataValida.toISOString().split('T')[0];
+
+    result.push({
+      id: `subsc_${sub.id}_${anoAtual}_${mesAtual}`,
+      desc: sub.nome,
+      valor: sub.val,
+      cat: 'Assinaturas/Mensalidades', // categoria fixa (você pode customizar)
+      data: dataFormatada,
+      tipo: 'despesa',
+      isGenerated: true,
+      origemId: sub.id
+    });
   });
   return result;
 }
 
-// ── ADICIONAR CARTÃO ─────────────────────────────────────────────────────────
+
+function salvarCompras(c) {
+  window._compras = c;
+  window._salvarComprasFirebase && window._salvarComprasFirebase(c);
+}
+function formatCardNumber(n) {
+  if (!n) return "**** **** **** ****";
+  const d = n.replace(/\D/g, '');
+  if (d.length === 0) return "**** **** **** ****";
+  return `**** **** **** ${d.slice(-4)}`;
+}
+function getBrandColor(brand, custom) {
+  if (custom) return custom;
+  const c = {
+    nubank: 'linear-gradient(135deg, #820ad1, #4e0a9e)', sicoob: 'linear-gradient(135deg, #00875f, #006b4a)',
+    nomad: 'linear-gradient(135deg, #1e1e2f, #000)', mercadopago: 'linear-gradient(135deg, #009ee3, #0070b3)',
+    infinite: 'linear-gradient(135deg, #ff6b00, #cc5500)', visa: 'linear-gradient(135deg, #1a1f71, #0a0f4a)',
+    mastercard: 'linear-gradient(135deg, #eb001b, #f79e1b)', elo: 'linear-gradient(135deg, #003f5c, #2c6e8f)',
+    amex: 'linear-gradient(135deg, #016fd0, #003f8c)', hipercard: 'linear-gradient(135deg, #b3113c, #8c0a2d)',
+    diners: 'linear-gradient(135deg, #0079be, #005a8c)', default: 'linear-gradient(135deg, #2c3e50, #1a2632)'
+  };
+  return c[brand] || c.default;
+}
+function getBrandIconClass(brand) {
+  const i = {
+    nubank: 'fab fa-cc-nubank', sicoob: 'fas fa-building', nomad: 'fas fa-compass',
+    mercadopago: 'fas fa-shopping-cart', infinite: 'fas fa-infinity', visa: 'fab fa-cc-visa',
+    mastercard: 'fab fa-cc-mastercard', elo: 'fab fa-cc-elo', amex: 'fab fa-cc-amex',
+    hipercard: 'fab fa-cc-hipercard', diners: 'fab fa-cc-diners-club', default: 'fas fa-credit-card'
+  };
+  return i[brand] || i.default;
+}
 function adicionarCartao() {
-  const banco   = document.getElementById('novo-cartao-banco').value;
-  const apelido = document.getElementById('novo-cartao-apelido').value.trim();
-  if (!banco) { toastMsg('Selecione um banco ou cartão!','erro'); return; }
+  const nome = document.getElementById('novo-cartao-nome').value.trim();
+  const bandeira = document.getElementById('novo-cartao-bandeira').value;
+  const titular = document.getElementById('novo-cartao-titular').value.trim();
+  const numero = document.getElementById('novo-cartao-numero').value.trim();
+  const cor = document.getElementById('novo-cartao-cor').value;
+  const limite = parseFloat(document.getElementById('novo-cartao-limite').value);
+  if (!nome) { toastMsg('Informe o nome do cartão', 'erro'); return; }
   const cartoes = getCartoes();
-  cartoes.push({ id:Date.now(), banco, nome:CARD_LABELS[banco]||'Cartão', apelido });
+  if (cartoes.some(c => c.nome.toLowerCase() === nome.toLowerCase())) {
+    toastMsg('Cartão já cadastrado', 'erro'); return;
+  }
+  cartoes.push({ id: Date.now(), nome, bandeira, titular: titular || 'TITULAR', numero, cor, limite: isNaN(limite) ? null : limite });
   salvarCartoes(cartoes);
-  document.getElementById('novo-cartao-banco').value='';
-  document.getElementById('novo-cartao-apelido').value='';
+  document.getElementById('novo-cartao-nome').value = '';
+  document.getElementById('novo-cartao-titular').value = '';
+  document.getElementById('novo-cartao-numero').value = '';
+  document.getElementById('novo-cartao-limite').value = '';
   renderizarCartoes();
   atualizarSelectCartoes();
-  toastMsg('💳 Cartão adicionado!');
+  toastMsg(`Cartão ${nome} adicionado!`);
 }
-
-// ── REMOVER CARTÃO ───────────────────────────────────────────────────────────
 function removerCartao(id) {
-  salvarCartoes(getCartoes().filter(c=>c.id!==id));
-  salvarCompras(getCompras().filter(c=>c.cartaoId!==id));
+  let cartoes = getCartoes();
+  cartoes = cartoes.filter(c => c.id !== id);
+  salvarCartoes(cartoes);
+  let compras = getCompras();
+  compras = compras.filter(c => c.cartaoId !== id);
+  salvarCompras(compras);
   renderizarCartoes();
   atualizarSelectCartoes();
   renderizarCompras();
+  renderAll();
   toastMsg('Cartão removido');
 }
-
-// ── RENDERIZAR CARTÕES (retrocompat com dados antigos) ───────────────────────
-function renderizarCartoes() {
-  const el = document.getElementById('cards-container');
-  if (!el) return;
-  const cartoes = getCartoes();
-  if (!cartoes.length) {
-    el.innerHTML=`<div class="cards-empty"><span class="ce-icon">💳</span>Nenhum cartão cadastrado ainda.<br><span style="opacity:.65;font-size:.82rem;">Selecione uma instituição acima para começar.</span></div>`;
-    return;
-  }
-  const userName = ((window._currentUser?.displayName||'').toUpperCase())||'SEU NOME';
-  el.innerHTML = cartoes.map(c => {
-    const key   = resolveThemeKey(c);
-    const t     = CARD_THEMES[key] || CARD_THEMES.outro;
-    const label = resolveCardLabel(c);
-    const apelidoEl = c.apelido ? `<div class="mc-apelido" style="color:${t.text};">${c.apelido}</div>` : '';
-    return `
-    <div class="mirai-card" style="background:${t.bg};color:${t.text};box-shadow:0 8px 28px rgba(0,0,0,.3);">
-      <div class="mc-deco1"></div>
-      <div class="mc-deco2"></div>
-      <div class="mc-shine"></div>
-      <button class="mc-remove" onclick="removerCartao(${c.id})" title="Remover">✕</button>
-      <div class="mc-top">
-        <div>
-          <div class="mc-bank" style="color:${t.text};">${label}</div>
-          ${apelidoEl}
-        </div>
-        <div class="mc-chip"></div>
-      </div>
-      <div class="mc-bottom">
-        <div>
-          <div class="mc-holder" style="color:${t.text};">${userName}</div>
-          <div class="mc-network" style="color:${t.text};">${t.network}</div>
-        </div>
-        <div class="mc-icon" style="color:${t.text};">${t.icon}</div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-// ── SELECT DE CARTÕES ────────────────────────────────────────────────────────
 function atualizarSelectCartoes() {
-  const sel = document.getElementById('compra-cartao');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">Selecione um cartão</option>';
-  getCartoes().forEach(c => {
-    sel.innerHTML += `<option value="${c.id}">${resolveCardLabel(c)}</option>`;
-  });
+  const select = document.getElementById('compra-cartao');
+  const cartoes = getCartoes();
+  select.innerHTML = '<option value="">Selecione um cartão</option>';
+  cartoes.forEach(c => select.innerHTML += `<option value="${c.id}">${c.nome}</option>`);
 }
-
-// ── ADICIONAR COMPRA ─────────────────────────────────────────────────────────
 function adicionarCompra() {
-  const cartaoId  = parseInt(document.getElementById('compra-cartao').value);
-  const data      = document.getElementById('compra-data').value;
-  const desc      = document.getElementById('compra-desc').value.trim();
-  const valor     = parseFloat(document.getElementById('compra-valor').value);
+  const cartaoId = parseInt(document.getElementById('compra-cartao').value);
+  const data = document.getElementById('compra-data').value;
+  const desc = document.getElementById('compra-desc').value.trim();
+  const valor = parseFloat(document.getElementById('compra-valor').value);
   const categoria = document.getElementById('compra-cat').value;
-  const parcelasTotal = parseInt(document.getElementById('compra-parcelas-total').value)||1;
-  const parcelaAtual  = parseInt(document.getElementById('compra-parcelas-atual').value)||1;
-  if (!cartaoId) { toastMsg('Selecione um cartão','erro'); return; }
-  if (!data||!desc||!valor||valor<=0) { toastMsg('Preencha todos os campos','erro'); return; }
+  const parcelasTotal = parseInt(document.getElementById('compra-parcelas-total').value);
+  const parcelaAtual = parseInt(document.getElementById('compra-parcelas-atual').value);
+  if (!cartaoId) { toastMsg('Selecione um cartão', 'erro'); return; }
+  if (!data || !desc || !valor || valor <= 0) { toastMsg('Preencha todos os campos', 'erro'); return; }
   const compras = getCompras();
-  compras.push({ id:Date.now(), cartaoId, data, desc, valor, categoria, parcelasTotal, parcelaAtual });
+  compras.push({ id: Date.now(), cartaoId, data, desc, valor, categoria, parcelasTotal: parcelasTotal || 1, parcelaAtual: parcelaAtual || 1 });
   salvarCompras(compras);
-  ['compra-data','compra-desc','compra-valor','compra-parcelas-total','compra-parcelas-atual'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('compra-data').value = '';
+  document.getElementById('compra-desc').value = '';
+  document.getElementById('compra-valor').value = '';
+  document.getElementById('compra-parcelas-total').value = '';
+  document.getElementById('compra-parcelas-atual').value = '';
   renderizarCompras();
+  renderAll();
   toastMsg('Compra registrada!');
 }
-
-// ── REMOVER COMPRA ───────────────────────────────────────────────────────────
 function removerCompra(id) {
-  salvarCompras(getCompras().filter(c=>c.id!==id));
+  let compras = getCompras();
+  compras = compras.filter(c => c.id !== id);
+  salvarCompras(compras);
   renderizarCompras();
+  renderAll();
   toastMsg('Compra removida');
 }
-
-// ── COMPRAS DO MÊS ───────────────────────────────────────────────────────────
-function getComprasVisiveisNoMes(year, month) {
-  return getCompras().filter(c => {
-    const [y,m] = c.data.split('-');
-    return parseInt(y)===year && parseInt(m)-1===month;
-  });
-}
-
-// ── RENDERIZAR COMPRAS (retrocompat: nomes de cartões antigos) ───────────────
-function renderizarCompras() {
-  const el = document.getElementById('compras-container');
-  if (!el) return;
-  const cartaoMap = Object.fromEntries(getCartoes().map(c => [c.id, resolveCardLabel(c)]));
-  const comprasMes = getComprasVisiveisNoMes(currentYear, currentMonth);
-  const grupos = {};
-  comprasMes.forEach(c => { (grupos[c.cartaoId]=grupos[c.cartaoId]||[]).push(c); });
-  if (!Object.keys(grupos).length) {
-    el.innerHTML='<div class="empty-state"><span class="emoji">🛍️</span>Nenhuma compra neste mês.</div>';
+function renderizarCartoes() {
+  const container = document.getElementById('cards-container');
+  const cartoes = getCartoes();
+  if (cartoes.length === 0) {
+    container.innerHTML = '<div class="empty-state"><span class="emoji">💳</span>Nenhum cartão cadastrado. Adicione um!</div>';
     return;
   }
-  el.innerHTML = Object.entries(grupos).map(([id,list]) => {
-    const nome  = cartaoMap[id]||'Desconhecido';
-    const total = list.reduce((a,c)=>a+c.valor,0);
-    const items = list.map(c => {
-      const parcela = c.parcelasTotal>1?` (${c.parcelaAtual}/${c.parcelasTotal})`:'';
-      const dt = new Date(c.data+'T12:00').toLocaleDateString('pt-BR');
-      return `<div class="compra-item">
+  container.innerHTML = cartoes.map(c => {
+    const bg = getBrandColor(c.bandeira, c.cor);
+    const icon = getBrandIconClass(c.bandeira);
+    const num = formatCardNumber(c.numero);
+    return `<div class="credit-card" style="background: ${bg};">
+      <div class="card-chip"><i data-lucide="cpu" class="w-5 h-5"></i></div>
+      <div class="card-brand-icon"><i class="${icon}"></i><span>${c.nome.toUpperCase()}</span></div>
+      <div class="card-number">${num}</div>
+      <div class="card-holder">${c.titular}</div>
+      ${c.limite ? `<div class="card-limit">Limite: ${moeda(c.limite)}</div>` : ''}
+      <button class="card-remove" onclick="removerCartao(${c.id})">✕</button>
+    </div>`;
+  }).join('');
+  lucide.createIcons();
+  atualizarSelectCartoes();
+}
+
+function getComprasVisiveisNoMes(year, month) {
+  const compras = getCompras();
+  const visiveis = [];
+
+  compras.forEach(c => {
+    const dataCompra = new Date(`${c.data}T12:00`);
+    const parcelasTotal = parseInt(c.parcelasTotal) || 1;
+    const diffMeses = (year - dataCompra.getFullYear()) * 12 + (month - dataCompra.getMonth());
+
+    if (parcelasTotal > 1) {
+      if (diffMeses < 0 || diffMeses >= parcelasTotal) return;
+      const numeroParcela = diffMeses + 1;
+      const valorParcela = Math.round((c.valor / parcelasTotal) * 100) / 100;
+      let dataParcela = new Date(year, month, dataCompra.getDate());
+      if (dataParcela.getMonth() !== month) dataParcela = new Date(year, month + 1, 0);
+      visiveis.push({
+        ...c,
+        valorExibicao: valorParcela,
+        dataExibicao: dataParcela.toISOString().split('T')[0],
+        numeroParcela,
+        parcelasTotal,
+      });
+      return;
+    }
+
+    if (dataCompra.getFullYear() === year && dataCompra.getMonth() === month) {
+      visiveis.push({
+        ...c,
+        valorExibicao: c.valor,
+        dataExibicao: c.data,
+        numeroParcela: 1,
+        parcelasTotal: 1,
+      });
+    }
+  });
+
+  return visiveis;
+}
+
+function renderizarCompras() {
+  const container = document.getElementById('compras-container');
+  if (!container) return;
+  const cartoes = getCartoes();
+  const cartaoMap = Object.fromEntries(cartoes.map(c => [c.id, c.nome]));
+  const comprasMes = getComprasVisiveisNoMes(currentYear, currentMonth);
+  const grupos = {};
+  comprasMes.forEach(c => { if (!grupos[c.cartaoId]) grupos[c.cartaoId] = []; grupos[c.cartaoId].push(c); });
+  if (Object.keys(grupos).length === 0) {
+    container.innerHTML = '<div class="empty-state"><span class="emoji">🛍️</span>Nenhuma compra neste mês.</div>';
+    return;
+  }
+  let html = '';
+  for (const id in grupos) {
+    const nome = cartaoMap[id] || 'Desconhecido';
+    const comprasCartao = grupos[id];
+    const total = comprasCartao.reduce((a, c) => a + c.valorExibicao, 0);
+    html += `<div class="cartao-compras">
+      <div class="cartao-titulo"><span>${nome}</span><span class="compra-valor">Total: ${moeda(total)}</span></div>
+      <div class="compra-list">`;
+    comprasCartao.forEach(c => {
+      const parcela = (c.parcelasTotal > 1) ? ` (${c.numeroParcela}/${c.parcelasTotal})` : '';
+      const dataFmt = new Date(`${c.dataExibicao}T12:00`).toLocaleDateString('pt-BR');
+      html += `<div class="compra-item">
         <div class="compra-icon">🛒</div>
         <div class="compra-info">
           <div class="compra-desc">${c.desc}${parcela}</div>
-          <div class="compra-meta">${c.categoria} • ${dt}</div>
+          <div class="compra-meta">${c.categoria} • ${dataFmt}</div>
         </div>
-        <div class="compra-valor">${moeda(c.valor)}</div>
+        <div class="compra-valor">${moeda(c.valorExibicao)}</div>
         <button class="compra-del" onclick="removerCompra(${c.id})">✕</button>
       </div>`;
-    }).join('');
-    return `<div class="cartao-compras">
-      <div class="cartao-titulo"><span>${nome}</span><span class="compra-valor">Total: ${moeda(total)}</span></div>
-      <div class="compra-list">${items}</div>
-    </div>`;
-  }).join('');
+    });
+    html += `</div></div>`;
+  }
+  container.innerHTML = html;
 }
 
 // ========== EVENTOS DO DROPDOWN ==========
@@ -3405,6 +4029,11 @@ function switchTab(tab) {
     renderizarCompras();
   } else if (tab === 'metas') {
     renderMetas(); // metas sempre atualiza (depende do mês)
+  } else if (tab === 'invest' && !_tabRendered.invest) {
+    _tabRendered.invest = true;
+    iniciarInvestimentos();
+  } else if (tab === 'relatorios') {
+    renderRelatorios(); // sempre atualiza (depende do período)
   }
 }
 // Sync desktop tabs com bottom nav
@@ -3860,6 +4489,602 @@ function miraixAplicar() {
 document.getElementById('miraix-input')?.addEventListener('keydown', e => {
   if (e.key === 'Enter') miraixProcessar();
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// MIRAI FINANCE — MÓDULO INVESTIMENTOS
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Cores por categoria ───────────────────────────────────────────────────
+const INV_COLORS = {
+  'Reserva de emergência': '#22c55e',
+  'CDB / Renda fixa':      '#3b82f6',
+  'Tesouro Selic':         '#06b6d4',
+  'Tesouro IPCA+':         '#8b5cf6',
+  'Prefixado':             '#f59e0b',
+  'Fundos':                '#ec4899',
+  'Ações':                 '#E31A2A',
+  'FIIs':                  '#f97316',
+  'Cripto':                '#a855f7',
+  'Outros':                '#94a3b8',
+};
+
+// ── Taxa Selic em cache ───────────────────────────────────────────────────
+let _selicCache = null;  // % a.a.
+let _ipcaCache  = null;  // % último mês
+let _chartInvAlloc = null;
+
+// ── Inicialização ─────────────────────────────────────────────────────────
+async function iniciarInvestimentos() {
+  renderListaInvestimentos();
+  renderKpisInv();
+  renderAlocacao();
+  await carregarIndicadores();
+}
+
+// ── Storage Firebase ──────────────────────────────────────────────────────
+function getInvestimentos()    { return window._investimentos || []; }
+function salvarInvestimentos(d){
+  window._investimentos = d;
+  window._salvarInvestimentosFirebase && window._salvarInvestimentosFirebase(d);
+}
+
+// ── Indicadores do Banco Central ─────────────────────────────────────────
+async function carregarIndicadores() {
+  const el = document.getElementById('ind-update');
+  if (el) el.textContent = 'Carregando…';
+
+  // Fallback (valores típicos recentes)
+  const fallback = { selic: 14.75, ipca: 5.1, dolar: 5.75, ibov: 130000 };
+
+  try {
+    // BCB — Selic anualizada (série 432)
+    const [rSelic, rIpca] = await Promise.allSettled([
+      fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json', { signal: AbortSignal.timeout(5000) }),
+      fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/1?formato=json', { signal: AbortSignal.timeout(5000) }),
+    ]);
+
+    let selic = fallback.selic;
+    let ipca  = fallback.ipca;
+
+    if (rSelic.status === 'fulfilled' && rSelic.value.ok) {
+      const d = await rSelic.value.json();
+      if (d[0]) selic = parseFloat(d[0].valor);
+    }
+    if (rIpca.status === 'fulfilled' && rIpca.value.ok) {
+      const d = await rIpca.value.json();
+      if (d[0]) ipca = parseFloat(d[0].valor);
+    }
+
+    _selicCache = selic;
+    _ipcaCache  = ipca;
+
+    document.getElementById('ind-selic').textContent = selic.toFixed(2).replace('.',',') + '% a.a.';
+    document.getElementById('ind-ipca').textContent  = ipca.toFixed(2).replace('.',',') + '% a.a.';
+    document.getElementById('ind-dolar').textContent = 'R$ ' + fallback.dolar.toFixed(2).replace('.',',');
+    document.getElementById('ind-ibov').textContent  = fallback.ibov.toLocaleString('pt-BR') + ' pts';
+
+    const now = new Date().toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+    if (el) el.textContent = 'Atualizado: ' + now;
+  } catch(e) {
+    _selicCache = fallback.selic;
+    _ipcaCache  = fallback.ipca;
+    document.getElementById('ind-selic').textContent = fallback.selic.toFixed(2).replace('.',',') + '% a.a.*';
+    document.getElementById('ind-ipca').textContent  = fallback.ipca.toFixed(2).replace('.',',') + '% a.a.*';
+    document.getElementById('ind-dolar').textContent = 'R$ ' + fallback.dolar.toFixed(2).replace('.',',');
+    document.getElementById('ind-ibov').textContent  = fallback.ibov.toLocaleString('pt-BR') + ' pts';
+    if (el) el.textContent = '* dados de referência';
+  }
+}
+
+// ── KPIs ──────────────────────────────────────────────────────────────────
+function renderKpisInv() {
+  const invs = getInvestimentos();
+  const totalAportado = invs.reduce((a, i) => a + (i.aportado || 0), 0);
+  const totalAtual    = invs.reduce((a, i) => a + (i.atual    || 0), 0);
+  const rendimento    = totalAtual - totalAportado;
+  const pct           = totalAportado > 0 ? (rendimento / totalAportado) * 100 : 0;
+
+  const set = (id, val, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    el.className = 'inv-kpi-val' + (cls ? ' ' + cls : '');
+  };
+  set('ikpi-aportado', moeda(totalAportado));
+  set('ikpi-atual',    moeda(totalAtual));
+  set('ikpi-rendimento', (rendimento >= 0 ? '+' : '') + moeda(rendimento), rendimento >= 0 ? 'pos' : 'neg');
+  set('ikpi-pct', (pct >= 0 ? '+' : '') + pct.toFixed(2).replace('.',',') + '%', pct >= 0 ? 'pos' : 'neg');
+}
+
+// ── Distribuição por categoria ────────────────────────────────────────────
+function renderAlocacao() {
+  const invs = getInvestimentos();
+  if (!invs.length) return;
+
+  const total = invs.reduce((a, i) => a + (i.atual || 0), 0);
+  if (total === 0) return;
+
+  // Agrupa por categoria
+  const cats = {};
+  invs.forEach(i => {
+    cats[i.cat] = (cats[i.cat] || 0) + (i.atual || 0);
+  });
+
+  const sorted = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  const container = document.getElementById('inv-alloc-container');
+  if (!container) return;
+
+  container.innerHTML = '<div class="cat-alloc-list">' +
+    sorted.map(([cat, val]) => {
+      const pct = (val / total * 100).toFixed(1);
+      const cor = INV_COLORS[cat] || '#94a3b8';
+      return `<div class="cat-alloc-item">
+        <div class="cat-alloc-header"><span>${cat}</span><span>${pct}% · ${moeda(val)}</span></div>
+        <div class="cat-alloc-bar-bg"><div class="cat-alloc-bar" style="width:${pct}%;background:${cor};"></div></div>
+      </div>`;
+    }).join('') + '</div>';
+
+  // Gráfico de pizza
+  const canvas = document.getElementById('chart-inv-alloc');
+  if (canvas) {
+    canvas.style.display = 'none'; // visual já feito com barras
+  }
+}
+
+// ── Adicionar investimento ────────────────────────────────────────────────
+function adicionarInvestimento() {
+  const nome     = document.getElementById('inv-nome').value.trim();
+  const cat      = document.getElementById('inv-cat').value;
+  const inst     = document.getElementById('inv-inst').value.trim();
+  const data     = document.getElementById('inv-data').value;
+  const aportado = parseFloat(document.getElementById('inv-aportado').value) || 0;
+  const atual    = parseFloat(document.getElementById('inv-atual').value) || aportado;
+  const mensal   = parseFloat(document.getElementById('inv-mensal').value) || 0;
+  const obs      = document.getElementById('inv-obs').value.trim();
+
+  if (!nome) { toastMsg('Informe o nome do investimento', 'erro'); return; }
+  if (aportado <= 0) { toastMsg('Informe o valor investido', 'erro'); return; }
+
+  const invs = getInvestimentos();
+  invs.push({ id: Date.now(), nome, cat, inst, data, aportado, atual, mensal, obs });
+  salvarInvestimentos(invs);
+
+  ['inv-nome','inv-inst','inv-data','inv-obs'].forEach(id => { document.getElementById(id).value = ''; });
+  ['inv-aportado','inv-atual','inv-mensal'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('inv-cat').value = 'Reserva de emergência';
+
+  renderListaInvestimentos();
+  renderKpisInv();
+  renderAlocacao();
+  toastMsg('✓ Investimento registrado!');
+}
+
+// ── Remover investimento ──────────────────────────────────────────────────
+function removerInvestimento(id) {
+  salvarInvestimentos(getInvestimentos().filter(i => i.id !== id));
+  renderListaInvestimentos();
+  renderKpisInv();
+  renderAlocacao();
+  toastMsg('Investimento removido');
+}
+
+// ── Render lista ──────────────────────────────────────────────────────────
+function renderListaInvestimentos() {
+  const container = document.getElementById('inv-lista-container');
+  if (!container) return;
+  const invs = getInvestimentos();
+  if (!invs.length) {
+    container.innerHTML = '<div class="empty-state"><span class="emoji">📊</span>Nenhum investimento registrado ainda.</div>';
+    return;
+  }
+  container.innerHTML = '<div class="inv-form-grid">' + invs.map(inv => {
+    const rend = (inv.atual || 0) - (inv.aportado || 0);
+    const pct  = inv.aportado > 0 ? (rend / inv.aportado * 100).toFixed(2) : '0.00';
+    const cor  = INV_COLORS[inv.cat] || '#94a3b8';
+    return `<div class="inv-item">
+      <button class="inv-item-del" onclick="removerInvestimento(${inv.id})" title="Remover">✕</button>
+      <div class="inv-item-header">
+        <div>
+          <div class="inv-item-nome">${inv.nome}</div>
+          <span class="inv-item-cat" style="background:${cor}22;color:${cor};">${inv.cat}</span>
+          ${inv.inst ? `<div style="font-size:.65rem;color:var(--muted-light);margin-top:4px;">${inv.inst}</div>` : ''}
+        </div>
+      </div>
+      <div class="inv-item-vals">
+        <div class="inv-val-block"><label>Investido</label><span>${moeda(inv.aportado||0)}</span></div>
+        <div class="inv-val-block"><label>Atual</label><span>${moeda(inv.atual||0)}</span></div>
+        <div class="inv-val-block"><label>Rendimento</label><span class="${rend>=0?'pos':'neg'}">${rend>=0?'+':''}${moeda(rend)}</span></div>
+        <div class="inv-val-block"><label>Rentab.</label><span class="${rend>=0?'pos':'neg'}">${rend>=0?'+':''}${pct}%</span></div>
+      </div>
+      ${inv.obs ? `<div style="font-size:.68rem;color:var(--muted-light);border-top:1px solid var(--border-light);padding-top:8px;margin-top:4px;">${inv.obs}</div>` : ''}
+    </div>`;
+  }).join('') + '</div>';
+}
+
+// ── Inner tabs ────────────────────────────────────────────────────────────
+function switchInnerTab(tab) {
+  document.querySelectorAll('.inner-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.inner-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('itab-' + tab).classList.add('active');
+  document.getElementById('isec-' + tab).classList.add('active');
+  if (tab === 'fiscal') renderFiscal();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SIMULADORES
+// ══════════════════════════════════════════════════════════════════════════
+function fmt(v) { return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+function renderSimResult(id, rows) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = 'block';
+  el.innerHTML = rows.map(([k,v]) => `<div class="sim-result-row"><span>${k}</span><span>${v}</span></div>`).join('');
+}
+
+function simularCDB() {
+  const val   = parseFloat(document.getElementById('sim-cdb-val').value) || 1000;
+  const pctCDI = parseFloat(document.getElementById('sim-cdb-pct').value) || 100;
+  const meses = parseFloat(document.getElementById('sim-cdb-meses').value) || 12;
+  const cdi   = (_selicCache || 14.75) / 100;
+  const taxa  = (pctCDI / 100) * cdi;
+  const bruto = val * Math.pow(1 + taxa, meses / 12);
+  const rend  = bruto - val;
+  const ir    = rend * (meses <= 6 ? 0.225 : meses <= 12 ? 0.20 : meses <= 24 ? 0.175 : 0.15);
+  const liq   = bruto - ir;
+  renderSimResult('sim-cdb-result', [
+    ['Valor inicial', fmt(val)],
+    [`CDI ref. (${(_selicCache||14.75).toFixed(2)}% a.a.)`, ''],
+    ['% do CDI', pctCDI + '%'],
+    ['Bruto no período', fmt(bruto)],
+    ['IR estimado', fmt(ir)],
+    ['Rendimento líquido', fmt(rend - ir)],
+    ['Total líquido', fmt(liq)],
+  ]);
+}
+
+function simularSelic() {
+  const val   = parseFloat(document.getElementById('sim-selic-val').value) || 1000;
+  const meses = parseFloat(document.getElementById('sim-selic-meses').value) || 12;
+  const selic = (_selicCache || 14.75) / 100;
+  // Tesouro Selic: 100% da Selic, IR regressivo, taxa custódia 0,2% a.a.
+  const taxa  = selic - 0.002;
+  const bruto = val * Math.pow(1 + taxa, meses / 12);
+  const rend  = bruto - val;
+  const ir    = rend * (meses <= 6 ? 0.225 : meses <= 12 ? 0.20 : meses <= 24 ? 0.175 : 0.15);
+  renderSimResult('sim-selic-result', [
+    ['Valor inicial', fmt(val)],
+    [`Selic ref. (${(_selicCache||14.75).toFixed(2)}% a.a.)`, ''],
+    ['Bruto estimado', fmt(bruto)],
+    ['IR estimado', fmt(ir)],
+    ['Rendimento líquido', fmt(rend - ir)],
+    ['Total líquido', fmt(bruto - ir)],
+  ]);
+}
+
+function simularIPCA() {
+  const val   = parseFloat(document.getElementById('sim-ipca-val').value) || 1000;
+  const real  = parseFloat(document.getElementById('sim-ipca-taxa').value) || 6.0;
+  const meses = parseFloat(document.getElementById('sim-ipca-meses').value) || 24;
+  const ipca  = (_ipcaCache || 5.1) / 100;
+  const taxa  = ((1 + ipca) * (1 + real / 100)) - 1; // taxa nominal efetiva
+  const bruto = val * Math.pow(1 + taxa, meses / 12);
+  const rend  = bruto - val;
+  const ir    = rend * 0.15; // longo prazo
+  renderSimResult('sim-ipca-result', [
+    ['Valor inicial', fmt(val)],
+    [`IPCA ref. (${(_ipcaCache||5.1).toFixed(2)}% a.a.) + ${real.toFixed(2)}%`, ''],
+    ['Taxa nominal estimada', (taxa * 100).toFixed(2) + '% a.a.'],
+    ['Bruto estimado', fmt(bruto)],
+    ['IR estimado', fmt(ir)],
+    ['Total líquido', fmt(bruto - ir)],
+  ]);
+}
+
+function simularPrefixado() {
+  const val   = parseFloat(document.getElementById('sim-pre-val').value) || 1000;
+  const taxa  = parseFloat(document.getElementById('sim-pre-taxa').value) || 12.0;
+  const meses = parseFloat(document.getElementById('sim-pre-meses').value) || 12;
+  const bruto = val * Math.pow(1 + taxa / 100, meses / 12);
+  const rend  = bruto - val;
+  const ir    = rend * (meses <= 6 ? 0.225 : meses <= 12 ? 0.20 : meses <= 24 ? 0.175 : 0.15);
+  renderSimResult('sim-pre-result', [
+    ['Valor inicial', fmt(val)],
+    ['Taxa prefixada', taxa.toFixed(2) + '% a.a.'],
+    ['Bruto estimado', fmt(bruto)],
+    ['Rendimento bruto', fmt(rend)],
+    ['IR estimado', fmt(ir)],
+    ['Total líquido', fmt(bruto - ir)],
+  ]);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CENTRO FISCAL / IR
+// ══════════════════════════════════════════════════════════════════════════
+const CHECKLIST_IR_ITEMS = [
+  { id:'ci1', txt:'Informes de rendimentos dos bancos', sub:'Solicite pelo app do banco até março' },
+  { id:'ci2', txt:'Informe de rendimentos de investimentos', sub:'Tesouro Direto, corretoras, fundos' },
+  { id:'ci3', txt:'Comprovantes de renda (holerites / pro-labore)', sub:'Todos os meses do ano anterior' },
+  { id:'ci4', txt:'Recibos de plano de saúde', sub:'Saúde pode ser dedutível' },
+  { id:'ci5', txt:'Recibos médicos e odontológicos', sub:'Consultas, exames, internações' },
+  { id:'ci6', txt:'Comprovantes de educação', sub:'Escola, faculdade (limitado por lei)' },
+  { id:'ci7', txt:'Extrato de previdência privada (PGBL)', sub:'PGBL pode ser deduzido do IR' },
+  { id:'ci8', txt:'Documentos de imóveis', sub:'Compra, venda, financiamento, aluguel' },
+  { id:'ci9', txt:'Notas de corretagem (ações/FIIs)', sub:'Necessário para apuração de ganhos' },
+  { id:'ci10', txt:'DARF pago em meses com lucro em renda variável', sub:'Guarde todos os comprovantes' },
+];
+
+let _checklistState = {};
+
+function renderFiscal() {
+  // Popula seletor de anos
+  const sel = document.getElementById('fiscal-ano');
+  if (sel && !sel.options.length) {
+    const ano = new Date().getFullYear();
+    for (let a = ano; a >= ano - 4; a--) {
+      sel.innerHTML += `<option value="${a}">${a}</option>`;
+    }
+  }
+
+  const ano = parseInt(document.getElementById('fiscal-ano')?.value || new Date().getFullYear());
+  const txs  = (window._transacoes || []).filter(t => new Date(t.data).getFullYear() === ano);
+  const invs = getInvestimentos().filter(i => i.data && new Date(i.data).getFullYear() === ano);
+
+  const recebido    = txs.filter(t => t.tipo === 'receita').reduce((a,t) => a + t.valor, 0);
+  const gasto       = txs.filter(t => t.tipo === 'despesa').reduce((a,t) => a + t.valor, 0);
+  const investido   = invs.reduce((a,i) => a + (i.aportado||0), 0);
+  const rendimentos = getInvestimentos().reduce((a,i) => a + Math.max(0, (i.atual||0)-(i.aportado||0)), 0);
+  const patrimonio  = getInvestimentos().reduce((a,i) => a + (i.atual||0), 0);
+  const saldo       = recebido - gasto;
+
+  document.getElementById('fk-recebido').textContent   = moeda(recebido);
+  document.getElementById('fk-gasto').textContent      = moeda(gasto);
+  document.getElementById('fk-investido').textContent  = moeda(investido);
+  document.getElementById('fk-rendimentos').textContent= moeda(rendimentos);
+  document.getElementById('fk-saldo').textContent      = moeda(saldo);
+  document.getElementById('fk-patrimonio').textContent = moeda(patrimonio);
+
+  // Carrega estado do checklist do localStorage
+  try { _checklistState = JSON.parse(localStorage.getItem('mirai_checklist_ir') || '{}'); } catch(e) {}
+
+  const cl = document.getElementById('checklist-ir');
+  if (cl) {
+    cl.innerHTML = CHECKLIST_IR_ITEMS.map(item => `
+      <div class="check-item${_checklistState[item.id] ? ' done' : ''}" onclick="toggleCheckIR('${item.id}', this)">
+        <div class="check-box">${_checklistState[item.id] ? '✓' : ''}</div>
+        <div>
+          <div class="check-text">${item.txt}</div>
+          <div class="check-sub">${item.sub}</div>
+        </div>
+      </div>`).join('');
+  }
+}
+
+function toggleCheckIR(id, el) {
+  _checklistState[id] = !_checklistState[id];
+  localStorage.setItem('mirai_checklist_ir', JSON.stringify(_checklistState));
+  el.classList.toggle('done', _checklistState[id]);
+  el.querySelector('.check-box').textContent = _checklistState[id] ? '✓' : '';
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MIRAI FINANCE — MÓDULO RELATÓRIOS
+// ══════════════════════════════════════════════════════════════════════════
+
+let _periodoAtual = 'mes';
+let _chartRelCat   = null;
+let _chartRelFluxo = null;
+
+// ── Período ───────────────────────────────────────────────────────────────
+function setPeriodo(p) {
+  _periodoAtual = p;
+  document.querySelectorAll('.periodo-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('pb-' + p);
+  if (btn) btn.classList.add('active');
+  const customWrap = document.getElementById('periodo-custom-wrap');
+  if (customWrap) customWrap.classList.toggle('visible', p === 'custom');
+  if (p !== 'custom') renderRelatorios();
+}
+
+function getPeriodoDates() {
+  const now   = new Date();
+  const hoje  = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let inicio, fim = new Date(hoje);
+  fim.setHours(23, 59, 59, 999);
+
+  switch (_periodoAtual) {
+    case 'mes':
+      inicio = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+    case '30':
+      inicio = new Date(hoje); inicio.setDate(inicio.getDate() - 29);
+      break;
+    case '90':
+      inicio = new Date(hoje); inicio.setDate(inicio.getDate() - 89);
+      break;
+    case 'ano':
+      inicio = new Date(now.getFullYear(), 0, 1);
+      break;
+    case 'custom':
+      const di = document.getElementById('rel-data-ini')?.value;
+      const df = document.getElementById('rel-data-fim')?.value;
+      inicio = di ? new Date(di + 'T00:00') : new Date(now.getFullYear(), now.getMonth(), 1);
+      fim    = df ? new Date(df + 'T23:59:59') : fim;
+      break;
+    default:
+      inicio = new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  return { inicio, fim };
+}
+
+// ── Render principal ──────────────────────────────────────────────────────
+function renderRelatorios() {
+  const { inicio, fim } = getPeriodoDates();
+
+  // Filtra transações do período
+  const txs = (window._transacoes || []).filter(t => {
+    const d = new Date(t.data + 'T12:00');
+    return d >= inicio && d <= fim;
+  });
+
+  const receitas  = txs.filter(t => t.tipo === 'receita').reduce((a,t) => a+t.valor, 0);
+  const despesas  = txs.filter(t => t.tipo === 'despesa').reduce((a,t) => a+t.valor, 0);
+  const saldo     = receitas - despesas;
+
+  // Compras do cartão no período
+  const compras   = (window._compras || []).filter(c => {
+    const d = new Date(c.data + 'T12:00');
+    return d >= inicio && d <= fim;
+  });
+  const totalCartao = compras.reduce((a,c) => a+c.valor, 0);
+
+  // Mensalidades (estimativa por meses no período)
+  const meses = Math.max(1, Math.round((fim - inicio) / (30 * 24 * 3600 * 1000)));
+  const mensalTotal = (window._mensalidades || []).reduce((a,m) => a + (m.val || 0), 0) * meses;
+
+  // Investimentos feitos no período
+  const invsPeriodo = (window._investimentos || []).filter(i => {
+    if (!i.data) return false;
+    const d = new Date(i.data + 'T12:00');
+    return d >= inicio && d <= fim;
+  });
+  const totalInvestido = invsPeriodo.reduce((a,i) => a+(i.aportado||0), 0);
+
+  // Atualiza KPIs
+  const setKpi = (id, val, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    el.className = 'rkval' + (cls ? ' '+cls : '');
+  };
+  setKpi('rk-recebido',    moeda(receitas),    'pos');
+  setKpi('rk-gasto',       moeda(despesas),    'neg');
+  setKpi('rk-saldo',       moeda(saldo),       saldo >= 0 ? 'pos' : 'neg');
+  setKpi('rk-investido',   moeda(totalInvestido));
+  setKpi('rk-cartao',      moeda(totalCartao));
+  setKpi('rk-mensalidades',moeda(mensalTotal));
+
+  // Gastos por categoria
+  const catMap = {};
+  txs.filter(t => t.tipo === 'despesa').forEach(t => {
+    catMap[t.cat] = (catMap[t.cat] || 0) + t.valor;
+  });
+  const topCat = Object.entries(catMap).sort((a,b) => b[1]-a[1]);
+
+  renderChartCat(topCat);
+  renderChartFluxo(inicio, fim, txs);
+  renderExecutivo(receitas, despesas, saldo, totalInvestido, totalCartao, topCat, inicio, fim);
+}
+
+// ── Gráfico categorias ────────────────────────────────────────────────────
+function renderChartCat(topCat) {
+  const canvas = document.getElementById('chart-rel-cat');
+  if (!canvas || !topCat.length) return;
+  if (_chartRelCat) { _chartRelCat.destroy(); _chartRelCat = null; }
+
+  const palette = Object.values(CAT_COLORS || {});
+  _chartRelCat = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: topCat.map(([k]) => k),
+      datasets: [{ data: topCat.map(([,v]) => v), backgroundColor: topCat.map(([k], i) => (CAT_COLORS||{})[k] || palette[i % palette.length] || '#94a3b8'), borderWidth: 2, borderColor: 'transparent' }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12 } } } }
+  });
+}
+
+// ── Gráfico fluxo mensal ──────────────────────────────────────────────────
+function renderChartFluxo(inicio, fim, txs) {
+  const canvas = document.getElementById('chart-rel-fluxo');
+  if (!canvas) return;
+  if (_chartRelFluxo) { _chartRelFluxo.destroy(); _chartRelFluxo = null; }
+
+  // Meses no período
+  const meses = [];
+  let cur = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+  while (cur <= fim) {
+    meses.push({ y: cur.getFullYear(), m: cur.getMonth() });
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  }
+
+  const labels   = meses.map(({y,m}) => new Date(y,m,1).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}));
+  const receitas = meses.map(({y,m}) => txs.filter(t => t.tipo==='receita' && new Date(t.data+'T12:00').getFullYear()===y && new Date(t.data+'T12:00').getMonth()===m).reduce((a,t)=>a+t.valor,0));
+  const despesas = meses.map(({y,m}) => txs.filter(t => t.tipo==='despesa' && new Date(t.data+'T12:00').getFullYear()===y && new Date(t.data+'T12:00').getMonth()===m).reduce((a,t)=>a+t.valor,0));
+
+  _chartRelFluxo = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Receitas', data: receitas, backgroundColor: '#22c55e88', borderColor: '#22c55e', borderWidth: 1, borderRadius: 6 },
+        { label: 'Despesas', data: despesas, backgroundColor: '#E31A2A88', borderColor: '#E31A2A', borderWidth: 1, borderRadius: 6 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#ffffff08' } },
+        y: { ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => 'R$' + (v/1000).toFixed(0)+'k' }, grid: { color: '#ffffff08' } }
+      }
+    }
+  });
+}
+
+// ── Relatório executivo ───────────────────────────────────────────────────
+function renderExecutivo(receitas, despesas, saldo, investido, cartao, topCat, inicio, fim) {
+  const el = document.getElementById('rel-executivo');
+  if (!el) return;
+
+  const periodoStr = inicio.toLocaleDateString('pt-BR') + ' a ' + fim.toLocaleDateString('pt-BR');
+  const topCategoria = topCat[0] ? `${topCat[0][0]} (${moeda(topCat[0][1])})` : 'sem registros';
+  const pctPoupanca = receitas > 0 ? ((saldo / receitas) * 100).toFixed(1) : '—';
+  const emoji = saldo >= 0 ? '✅' : '⚠️';
+
+  el.textContent = [
+    `📅 Período: ${periodoStr}`,
+    '',
+    `${emoji} Resumo do período`,
+    `• Você recebeu: ${moeda(receitas)}`,
+    `• Gastou: ${moeda(despesas)}`,
+    `• Saldo: ${moeda(saldo)} (${pctPoupanca}% do que recebeu)`,
+    '',
+    `💳 Cartões e mensalidades`,
+    `• Compras no cartão: ${moeda(cartao)}`,
+    '',
+    `📊 Categoria com maior gasto: ${topCategoria}`,
+    '',
+    `📈 Investimentos`,
+    `• Aportes no período: ${moeda(investido)}`,
+    '',
+    saldo >= 0
+      ? `💡 Parabéns! Você terminou o período no positivo.`
+      : `💡 Atenção: o período terminou com saldo negativo. Revise os maiores gastos.`,
+  ].join('
+');
+}
+
+// ── Exportar CSV ──────────────────────────────────────────────────────────
+function exportarRelatorioCSV() {
+  const { inicio, fim } = getPeriodoDates();
+  const txs = (window._transacoes || []).filter(t => {
+    const d = new Date(t.data+'T12:00'); return d >= inicio && d <= fim;
+  });
+  if (!txs.length) { toastMsg('Nenhuma transação no período', 'erro'); return; }
+
+  const header = 'Data,Descrição,Tipo,Categoria,Valor
+';
+  const rows   = txs.map(t => `${t.data},"${t.desc}",${t.tipo},"${t.cat}",${t.valor.toFixed(2).replace('.',',')}`).join('
+');
+  const blob   = new Blob(['﻿' + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement('a');
+  a.href = url; a.download = `mirai-relatorio-${inicio.toISOString().split('T')[0]}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toastMsg('✓ CSV exportado!');
+}
+
 </script>
 </body>
 </html>
